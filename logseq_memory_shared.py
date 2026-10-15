@@ -154,6 +154,29 @@ def parse_extraction_output(raw: str) -> dict:
     return parsed
 
 
+_SYNTHETIC_WRAPPER_RE = re.compile(
+    r"^(?:\s*<(system-reminder|ide_selection|ide_opened_file|local-command-caveat"
+    r"|local-command-stdout|local-command-stderr)>.*?</\1>)+",
+    re.DOTALL,
+)
+_IMAGE_TAG_RE = re.compile(r"</?image\b[^>]*>")
+_SLASH_COMMAND_RE = re.compile(
+    r"^\s*<command-message>.*?</command-message>\s*<command-name>(.*?)</command-name>"
+    r"(?:\s*<command-args>(.*?)</command-args>)?",
+    re.DOTALL,
+)
+
+
+def _clean_title_text(text: str) -> str:
+    """Drop harness-injected wrappers so the title is what the user typed."""
+    text = _IMAGE_TAG_RE.sub("", text)
+    text = _SYNTHETIC_WRAPPER_RE.sub("", text)
+    text = _SLASH_COMMAND_RE.sub(
+        lambda m: f"{m.group(1).strip()} {(m.group(2) or '').strip()}", text
+    )
+    return text.strip()
+
+
 def extract_conversation_title(raw: str) -> str:
     for line in raw.splitlines():
         line = line.strip()
@@ -163,20 +186,23 @@ def extract_conversation_title(raw: str) -> str:
             entry = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if entry.get("isMeta"):
+            continue
         msg = entry.get("message", {})
         if not isinstance(msg, dict) or msg.get("role") != "user":
             continue
         content = msg.get("content", "")
-        if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    content = block["text"]
-                    break
-            else:
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "text":
                 continue
-        if isinstance(content, str) and content.strip():
-            text = content.strip().replace("\n", " ")
-            return text[:120] + ("…" if len(text) > 120 else "")
+            text = _clean_title_text(str(block.get("text", "")))
+            if text:
+                text = text.replace("\n", " ")
+                return text[:120] + ("…" if len(text) > 120 else "")
     return ""
 
 

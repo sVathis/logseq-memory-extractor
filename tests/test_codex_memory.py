@@ -123,6 +123,21 @@ class CodexTranscriptTests(unittest.TestCase):
         self.assertNotIn("developer", parsed.text)
         self.assertNotIn("tool secret", parsed.text)
 
+    def test_skips_codex_apps_open_page_injection(self):
+        raw = jsonl(
+            session_meta(),
+            turn("gpt-5.6-sol"),
+            message(
+                "user",
+                '<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>',
+            ),
+            message("user", "Review the pull request"),
+            message("assistant", "Looks fine"),
+        )
+        parsed = codex.parse_transcript(raw)
+        self.assertEqual(parsed.title, "Review the pull request")
+        self.assertNotIn("external_codex_apps", parsed.text)
+
     def test_redacts_common_secrets_and_uses_claude_truncation_limit(self):
         raw = jsonl(
             session_meta(),

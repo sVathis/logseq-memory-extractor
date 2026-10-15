@@ -72,6 +72,7 @@ def _is_injected_context(text: str) -> bool:
         or stripped.startswith("<apps_instructions>")
         or stripped.startswith("<plugins_instructions>")
         or stripped.startswith("<skills_instructions>")
+        or stripped.startswith("<external_codex_apps_")
     )
 
 

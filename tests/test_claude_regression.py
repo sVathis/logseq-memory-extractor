@@ -131,6 +131,67 @@ class ClaudeTranscriptContractTests(unittest.TestCase):
             "User: First request\ncontinued\nAssistant: Result\nAssistant: Second result\nAssistant: Synthetic",
         )
 
+    def test_title_skips_harness_wrappers_and_meta_records(self):
+        def title(*entries):
+            return extractor.extract_conversation_title("\n".join(entries))
+
+        meta = json.dumps(
+            {"isMeta": True, "message": {"role": "user", "content": "Skill base directory"}}
+        )
+        cases = [
+            (
+                [
+                    claude_entry("user", "<system-reminder>\nscratch workspace\n</system-reminder>"),
+                    claude_entry("user", "Real prompt"),
+                ],
+                "Real prompt",
+            ),
+            (
+                [
+                    claude_entry(
+                        "user",
+                        [
+                            {"type": "text", "text": "<ide_opened_file>a.py</ide_opened_file>"},
+                            {"type": "text", "text": "Explain this"},
+                        ],
+                    )
+                ],
+                "Explain this",
+            ),
+            (
+                [
+                    claude_entry(
+                        "user",
+                        "<local-command-stdout>Set model</local-command-stdout>\n\nAfter wrapper",
+                    )
+                ],
+                "After wrapper",
+            ),
+            (
+                [claude_entry("user", "<local-command-caveat>Caveat</local-command-caveat>"), claude_entry("user", "Hello")],
+                "Hello",
+            ),
+            ([meta, claude_entry("user", "After meta")], "After meta"),
+            (
+                [
+                    claude_entry(
+                        "user",
+                        "<command-message>code-review</command-message>\n"
+                        "<command-name>/code-review</command-name>\n"
+                        "<command-args>https://example.com/pull/1</command-args>",
+                    )
+                ],
+                "/code-review https://example.com/pull/1",
+            ),
+            (
+                [claude_entry("user", '<image name="[Image #1]">\n</image>\nWhy is this failing?')],
+                "Why is this failing?",
+            ),
+        ]
+        for entries, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(title(*entries), expected)
+
     def test_transcript_keeps_last_12000_characters(self):
         raw = claude_entry("user", "A" * 13_000)
         parsed = extractor.parse_transcript(raw)
