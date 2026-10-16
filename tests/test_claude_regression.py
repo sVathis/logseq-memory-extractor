@@ -209,10 +209,15 @@ class ClaudePageContractTests(unittest.TestCase):
         self.pages = Path(self.tmp.name) / "pages"
         self.pages_patch = mock.patch.object(extractor, "LOGSEQ_PAGES_DIR", self.pages)
         self.date_patch = mock.patch.object(extractor, "date", FrozenDate)
+        self.index_patch = mock.patch.object(
+            extractor, "INDEX_PATH", Path(self.tmp.name) / "missing.npz"
+        )
         self.pages_patch.start()
         self.date_patch.start()
+        self.index_patch.start()
 
     def tearDown(self):
+        self.index_patch.stop()
         self.date_patch.stop()
         self.pages_patch.stop()
         self.tmp.cleanup()
@@ -383,6 +388,7 @@ class AdjacentClaudeComponentTests(unittest.TestCase):
             pages = Path(tmp) / "pages"
             with (
                 mock.patch.object(mcp, "LOGSEQ_PAGES_DIR", pages),
+                mock.patch.object(mcp, "INDEX_PATH", Path(tmp) / "missing.npz"),
                 mock.patch.object(mcp, "datetime") as dt,
             ):
                 dt.now.return_value = SimpleNamespace(

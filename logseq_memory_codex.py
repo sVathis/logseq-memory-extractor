@@ -378,6 +378,7 @@ def _persist(job: dict, insights: dict) -> Path:
             ),
             creator="codex",
             today=started_on,
+            index_path=index_path(),
         )
         shared.write_session(
             insights,

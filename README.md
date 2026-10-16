@@ -308,6 +308,10 @@ Five settings, mostly in `logseq_memory_shared.py`, keep the vault from growing 
 
 **Slug near-match dedup** — before writing a new file, checks whether a file with the same 2-word slug prefix already exists in the category subdirectory. Prevents same-concept files with different trailing words from accumulating (e.g. `kafka-rebalance-storm` blocks `kafka-rebalance-recovery`).
 
+**Semantic dedup (append, not skip)** — after the slug checks, every write path (Stop hook, Codex adapter, `write_insight`, `write_codex_insight`) embeds the new note's `title. summary` and compares it with `vault_index.npz`. If an existing page in the same category directory scores at or above `LOGSEQ_DEDUP_MIN_SCORE` (default `0.88`, cosine), no new file is written: the note is appended to that page as a `## Update <date>` block (summary, source session, detail) and `last-updated::` is bumped. `write_insight(force=true)` writes a separate page anyway. Fails open: no numpy, no sentence-transformers or no index means the slug checks alone apply.
+
+The threshold was calibrated on 112 blind-labelled nearest-neighbour pairs from the live vault (2026-10-17). At ≥0.88 about 1 in 40 matches was a genuinely different insight (a correction) and ~60% were near-duplicates carrying one extra detail, which is why matches append rather than skip. Below ~0.86 different insights become common. Loose paraphrases often score 0.70–0.85, so this reduces but does not replace periodic consolidation. `write_insight` now also appends its page to the index, so later writes in the same session see it.
+
 ## Vault health
 
 Three features keep the vault healthy over time:

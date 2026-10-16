@@ -336,6 +336,20 @@ def _write_insight_unlocked(
     if existing:
         return f"Skipped — similar page already exists: {existing[0].name}"
 
+    # Same meaning, different wording: fold into the existing page instead of
+    # adding a near-duplicate file. force=true writes a separate page anyway.
+    type_label = _TYPE_LABEL[insight_type]
+    if not force:
+        match = shared.SemanticIndex(INDEX_PATH).find(
+            subdir, shared.embedding_text(f"{type_label}: {title}", summary)
+        )
+        if match is not None:
+            shared.append_update(match, summary, detail, session_str)
+            return (
+                f"Appended as update to similar page: {match}\n"
+                "If this is a genuinely different insight, call again with force=true."
+            )
+
     # Burst guard: this session has already written BURST_THRESHOLD+ separate
     # entries to this category. Adding another narrow one silently would just
     # crowd the digest with one session's play-by-play — push back and ask for
@@ -358,7 +372,6 @@ def _write_insight_unlocked(
     today = datetime.now().strftime("%Y/%m/%d")
     tags_str = ", ".join(f"[[{t}]]" for t in (tags or []))
     project_str = project or "VGS"
-    type_label = _TYPE_LABEL[insight_type]
 
     title_safe = _sanitize(title)
     summary_safe = _sanitize(summary.strip())
@@ -382,6 +395,7 @@ def _write_insight_unlocked(
         f"{_format_detail(detail_safe)}\n"
     )
     filepath.write_text(content, encoding="utf-8")
+    shared.update_vault_index([filepath], INDEX_PATH)
 
     verify_issues = _verify_page(filepath)
     if verify_issues:
@@ -455,6 +469,7 @@ def _write_codex_insight(
 
     with shared.vault_lock():
         before = set(subdir.glob("*.md")) if subdir.exists() else set()
+        report: list = []
         shared.write_pages(
             {insight_type: [candidate]},
             project or "VGS",
@@ -468,7 +483,12 @@ def _write_codex_insight(
             ),
             creator="codex",
             today=current,
+            index_path=INDEX_PATH,
+            report=report,
         )
+        appended = [path for action, path in report if action == "appended"]
+        if appended:
+            return f"Appended as update to similar page: {appended[0]}"
         after = set(subdir.glob("*.md")) if subdir.exists() else set()
         new_paths = after - before
         if new_paths:

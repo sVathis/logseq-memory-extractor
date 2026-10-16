@@ -409,6 +409,144 @@ def update_vault_index(new_paths: list[Path], index_path: Path) -> None:
         print(f"[logseq-memory] index update skipped: {exc}", file=sys.stderr)
 
 
+# Write-time semantic dedup. Calibrated 2026-10-17 on 112 blind-labelled
+# nearest-neighbour pairs from the live vault: at >=0.88 ~1 in 40 matches was
+# a genuinely different insight (a correction) and ~60% were near-duplicates
+# carrying one extra detail — so a match appends an update to the existing
+# page instead of silently dropping the new note.
+SEMANTIC_DEDUP_THRESHOLD = float(os.environ.get("LOGSEQ_DEDUP_MIN_SCORE", "0.88"))
+_EMBEDDING_MODEL = None
+
+
+def _embedding_model():
+    global _EMBEDDING_MODEL
+    if _EMBEDDING_MODEL is None:
+        from sentence_transformers import SentenceTransformer
+
+        _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+    return _EMBEDDING_MODEL
+
+
+def embedding_text(title: str, summary: str) -> str:
+    """The text a page is indexed under (mirrors index_extract_text)."""
+    return f"{sanitize(title)}. {sanitize(summary.strip())}".strip(". ")[:500]
+
+
+class SemanticIndex:
+    """Read-only view of vault_index.npz for finding same-meaning pages.
+
+    Fails open: if numpy, sentence-transformers or the index is unavailable,
+    find() returns None and writes proceed as before.
+    """
+
+    def __init__(
+        self,
+        index_path: Path | None,
+        encode: Callable[[list[str]], object] | None = None,
+        threshold: float | None = None,
+    ):
+        self.threshold = SEMANTIC_DEDUP_THRESHOLD if threshold is None else threshold
+        self._encode = encode
+        self._embeddings = None
+        self._paths: list[str] = []
+        self._np = None
+        if index_path is None or not Path(index_path).exists():
+            return
+        try:
+            import numpy as np
+
+            data = np.load(index_path, allow_pickle=True)
+            self._embeddings = data["embeddings"].astype("float32")
+            self._paths = [str(p) for p in data["paths"]]
+            self._np = np
+        except Exception as exc:
+            print(f"[logseq-memory] semantic dedup disabled: {exc}", file=sys.stderr)
+            self._embeddings = None
+
+    def _vector(self, text: str):
+        if self._encode is None:
+            model = _embedding_model()
+            self._encode = lambda texts: model.encode(
+                texts, normalize_embeddings=True, show_progress_bar=False
+            )
+        return self._np.asarray(self._encode([text]), dtype="float32")[0]
+
+    def find(self, directory: Path, text: str) -> Path | None:
+        """Best match at or above threshold that lives directly in directory.
+
+        Restricting to the directory being written keeps a match inside the
+        same category and the same vault, even if the index covers another.
+        """
+        if self._embeddings is None or not self._paths or not text:
+            return None
+        directory = Path(directory).resolve()
+        try:
+            scores = self._embeddings @ self._vector(text)
+        except Exception as exc:
+            print(f"[logseq-memory] semantic dedup skipped: {exc}", file=sys.stderr)
+            return None
+        for i in scores.argsort()[::-1]:
+            if float(scores[i]) < self.threshold:
+                break
+            candidate = Path(self._paths[i])
+            if candidate.parent.resolve() == directory and candidate.exists():
+                return candidate
+        return None
+
+    def add(self, path: Path, text: str) -> None:
+        """Make a page written earlier in this batch visible to later finds."""
+        if self._embeddings is None or not text:
+            return
+        try:
+            vector = self._vector(text)
+        except Exception:
+            return
+        self._embeddings = self._np.vstack([self._embeddings, vector[None, :]])
+        self._paths.append(str(path))
+
+
+def page_title(path: Path) -> str:
+    try:
+        for line in path.read_text(errors="replace").splitlines()[:5]:
+            if line.startswith("title::"):
+                return line[7:].strip()
+    except OSError:
+        pass
+    return path.stem
+
+
+def append_update(
+    path: Path,
+    summary: str,
+    detail: str,
+    session_title: str,
+    *,
+    today: date | None = None,
+) -> None:
+    """Fold a same-meaning note into an existing page as a dated update."""
+    today_text = logseq_date(today)
+    lines = path.read_text(errors="replace").rstrip("\n").split("\n")
+    for i, line in enumerate(lines):
+        if line.startswith("last-updated::"):
+            lines[i] = f"last-updated:: {today_text}"
+            break
+    else:
+        for i, line in enumerate(lines):
+            if line.startswith("date::"):
+                lines.insert(i + 1, f"last-updated:: {today_text}")
+                break
+    detail_lines = sanitize(detail).split("\n") if detail.strip() else []
+    lines += [
+        "",
+        f"- ## Update {today_text}",
+        f"  - {sanitize(summary.strip())}",
+        f"  - From [[{session_title}]]",
+    ]
+    if detail_lines:
+        lines += [f"  - {detail_lines[0]}"] + detail_lines[1:]
+    path.write_text("\n".join(lines) + "\n")
+
+
 def write_pages(
     insights: dict,
     project_name: str,
@@ -421,10 +559,20 @@ def write_pages(
     update_index_fn: Callable[[list[Path]], None],
     creator: str = "claude",
     today: date | None = None,
+    index_path: Path | None = None,
+    report: list | None = None,
 ) -> list[str]:
+    """Write insight pages; returns [[title]] links for the session page.
+
+    With index_path, a note whose title+summary matches an existing page in
+    the same category (cosine >= SEMANTIC_DEDUP_THRESHOLD) is appended to that
+    page as an update instead of creating a new file. If report is given,
+    ("written" | "appended", path) tuples are added to it.
+    """
     del session_id, session_slug  # retained for compatibility with the legacy API
     written: list[str] = []
     new_paths: list[Path] = []
+    semantic = SemanticIndex(index_path) if index_path is not None else None
     for key, type_name in TYPE_MAP.items():
         items = insights.get(key, [])
         if not isinstance(items, list):
@@ -453,6 +601,21 @@ def write_pages(
             already_exists = any(True for _ in subdir.glob(f"{prefix_pattern}*.md"))
             dest = subdir / f"{filename}.md"
             if not dest.exists() and not already_exists:
+                summary = item.get("summary", "")
+                text = embedding_text(title, summary)
+                match = semantic.find(subdir, text) if semantic is not None else None
+                if match is not None:
+                    append_update(
+                        match,
+                        summary,
+                        item.get("detail", ""),
+                        session_title,
+                        today=today,
+                    )
+                    if report is not None:
+                        report.append(("appended", match))
+                    written.append(f"[[{page_title(match)}]]")
+                    continue
                 content = page_content(
                     type_=type_name,
                     title=title,
@@ -467,6 +630,10 @@ def write_pages(
                 )
                 dest.write_text(content.lstrip("\n"))
                 new_paths.append(dest)
+                if semantic is not None:
+                    semantic.add(dest, text)
+                if report is not None:
+                    report.append(("written", dest))
             written.append(f"[[{title}]]")
     update_index_fn(new_paths)
     return written

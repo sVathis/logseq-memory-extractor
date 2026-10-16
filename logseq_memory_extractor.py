@@ -20,6 +20,7 @@ import logseq_memory_shared as shared
 
 # ── Config ────────────────────────────────────────────────────────────────────
 LOGSEQ_PAGES_DIR = Path("~/VGS/Notes/pages").expanduser()
+INDEX_PATH = Path("~/.claude/vault_index.npz").expanduser()
 CLAUDE_BIN = shutil.which("claude") or "/Users/spiros/.local/bin/claude"
 MAX_TRANSCRIPT_CHARS = 12_000  # ~3k tokens — keeps prompts fast via the claude CLI
 
@@ -158,9 +159,7 @@ def _index_extract_text(path: Path) -> str:
 def _update_vault_index(new_paths: list[Path]) -> None:
     """Incrementally append newly written insight pages to the semantic index.
     No-op if the index hasn't been built yet or if sentence-transformers is absent."""
-    shared.update_vault_index(
-        new_paths, Path("~/.claude/vault_index.npz").expanduser()
-    )
+    shared.update_vault_index(new_paths, INDEX_PATH)
 
 
 def write_pages(insights: dict, project_name: str, session_id: str, session_slug: str, session_title: str,
@@ -177,6 +176,7 @@ def write_pages(insights: dict, project_name: str, session_id: str, session_slug
         update_index_fn=_update_vault_index,
         creator=creator,
         today=date.today(),
+        index_path=INDEX_PATH,
     )
 
 
