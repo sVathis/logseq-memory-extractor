@@ -83,9 +83,10 @@ def call_claude(transcript_text: str) -> dict:
     """
     prompt = EXTRACTION_PROMPT + transcript_text
 
-    # Inherit the full environment so auth (CLAUDE_CODE_OAUTH_TOKEN) is available,
-    # then set the recursion guard and strip ALL proxy vars that interfere with
-    # the claude CLI's API calls (Teleport socks proxies, HTTP proxies, etc.).
+    # Inherit the environment, set the recursion guard, and strip ALL proxy vars
+    # that interfere with the claude CLI's API calls (Teleport socks proxies,
+    # HTTP proxies, etc.) plus every CLAUDE_CODE* variable, so `claude -p` runs
+    # as a fresh CLI invocation using the Desktop login.
     env = dict(os.environ)
     env["LOGSEQ_EXTRACTOR_RUNNING"] = "1"
     for key in list(env):
@@ -152,7 +153,7 @@ def _page_content(type_: str, title: str, summary: str, detail: str, tags: list,
 
 
 def _index_extract_text(path: Path) -> str:
-    """Extract title + summary from a Logseq page for embedding (mirrors logseq_memory_index.py)."""
+    """Extract title + summary for embedding; same rule as logseq_memory_index.extract_text (a separate copy, keep both in sync)."""
     return shared.index_extract_text(path)
 
 

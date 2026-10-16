@@ -2,12 +2,13 @@
 """
 Logseq vault MCP server — on-demand semantic search and write access.
 
-Exposes five tools:
+Exposes six tools:
   search_vault   — semantic similarity search over vault_index.npz
   read_page      — read the full content of a vault page by path
   write_insight  — create a new Logseq insight page mid-session
   list_recent    — list recently modified vault pages by category
   lint_vault     — scan vault for Logseq format violations
+  write_codex_insight — write a Codex insight through the shared page contract
 
 The server loads the embedding model and index once at startup.
 Set TRANSFORMERS_OFFLINE=1 and HF_DATASETS_OFFLINE=1 in the MCP server
@@ -54,7 +55,7 @@ MIN_SCORE = 0.38
 MAX_FILE_CHARS = 1500
 CATEGORIES = {"patterns", "mistakes", "decisions", "context"}
 STALENESS_DAYS = {"fresh": 7, "aging": 14, "stale": 30}
-# One above the Stop hook's own per-category extraction cap (5) — past this,
+# Equal to the Stop hook's own per-category extraction cap (5) — past this,
 # a single session's manual write_insight calls have out-produced what a full
 # end-of-session batch extraction would ever generate for one category, and
 # each further granular file crowds the digest's recency slots for that
