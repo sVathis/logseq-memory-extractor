@@ -174,7 +174,7 @@ def parse_transcript(raw: str, fallback_model: str | None = None) -> ParsedTrans
     _ordered_add(models, fallback_model)
     normalized_raw = "\n".join(normalized)
     return ParsedTranscript(
-        title=shared.extract_conversation_title(normalized_raw),
+        title=_redact_secrets(shared.extract_conversation_title(normalized_raw)),
         text=_redact_secrets(shared.parse_transcript(normalized_raw)),
         models=tuple(models),
         started_on=started_on or date.today(),

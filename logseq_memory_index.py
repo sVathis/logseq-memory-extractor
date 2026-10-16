@@ -17,6 +17,8 @@ Requirements:
 import sys
 from pathlib import Path
 
+import logseq_memory_shared as shared
+
 LOGSEQ_PAGES_DIR = Path("~/VGS/Notes/pages").expanduser()
 INDEX_PATH = Path("~/.claude/vault_index.npz").expanduser()
 CATEGORIES = ["patterns", "mistakes", "decisions", "context"]
@@ -67,6 +69,13 @@ def build_index(verbose: bool = True) -> None:
         print(f"Loading model '{MODEL_NAME}'...", flush=True)
     model = SentenceTransformer(MODEL_NAME)
 
+    # Hold the vault lock from scan to save: an incremental update_vault_index()
+    # (Stop hook, MCP, Codex) landing mid-rebuild would otherwise be overwritten.
+    with shared.vault_lock():
+        _rebuild(model, np, verbose)
+
+
+def _rebuild(model, np, verbose: bool) -> None:
     paths: list[str] = []
     texts: list[str] = []
 

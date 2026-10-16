@@ -167,9 +167,18 @@ def _search(query: str, top_k: int, category: str | None) -> list[dict]:
     return results
 
 
+# Pages written by this server process without an explicit session, per
+# category; drives the burst guard for session-less write_insight calls.
+_MANUAL_WRITES: dict[str, list[Path]] = {}
+
+
 def _read_page(path_str: str) -> str:
-    p = Path(path_str).expanduser()
-    if not p.exists():
+    """Read a page inside the Logseq graph (pages/, journals/, ...) only."""
+    vault_root = LOGSEQ_PAGES_DIR.parent.resolve()
+    p = Path(path_str).expanduser().resolve()
+    if not p.is_relative_to(vault_root):
+        return f"Refused — read_page only reads files under {vault_root}"
+    if not p.is_file():
         return f"File not found: {path_str}"
     return p.read_text(errors="replace")
 
@@ -324,6 +333,14 @@ def _write_insight_unlocked(
     subdir = LOGSEQ_PAGES_DIR / "claude" / insight_type
     subdir.mkdir(parents=True, exist_ok=True)
     session_str = session or f"Session {datetime.now().strftime('%Y-%m-%d')} — manual"
+    # Every session-less write on a given day shares the "manual" marker, so
+    # counting pages by marker would pool unrelated sessions. Count this server
+    # process's own writes instead (one process per client session).
+    session_files = (
+        shared.find_session_entries(subdir, session_str)
+        if session
+        else list(_MANUAL_WRITES.get(insight_type, []))
+    )
 
     # Near-match dedup: exact slug match always blocks; prefix match needs
     # ≥3 slug segments to avoid false positives (e.g. "access-logger" matching
@@ -355,7 +372,6 @@ def _write_insight_unlocked(
     # crowd the digest with one session's play-by-play — push back and ask for
     # a consolidated entry instead, unless the caller explicitly forces it.
     if not force:
-        session_files = shared.find_session_entries(subdir, session_str)
         if len(session_files) >= BURST_THRESHOLD:
             listing = "\n".join(f"  - {p.name}" for p in session_files)
             return (
@@ -396,6 +412,8 @@ def _write_insight_unlocked(
     )
     filepath.write_text(content, encoding="utf-8")
     shared.update_vault_index([filepath], INDEX_PATH)
+    if not session:
+        _MANUAL_WRITES.setdefault(insight_type, []).append(filepath)
 
     verify_issues = _verify_page(filepath)
     if verify_issues:
