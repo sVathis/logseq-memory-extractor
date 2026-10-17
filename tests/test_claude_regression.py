@@ -257,14 +257,14 @@ tags:: [[incident]], [[retry]]
 """
         self.assertEqual(actual, expected)
 
-    def test_write_pages_preserves_two_word_dedup_and_links(self):
+    def test_write_pages_three_word_dedup_and_links(self):
         existing = self.pages / "memory" / "patterns" / "pattern-kafka-rebalance-storm.md"
         existing.parent.mkdir(parents=True)
         existing.write_text("existing")
         insights = {
             "patterns": [
                 {
-                    "slug": "kafka-rebalance-recovery",
+                    "slug": "kafka-rebalance-storm-recovery",
                     "summary": "duplicate prefix",
                     "detail": "skip",
                     "tags": [],
@@ -288,14 +288,25 @@ tags:: [[incident]], [[retry]]
             )
         self.assertEqual(
             links,
-            ["[[Pattern: Kafka Rebalance Recovery]]", "[[Pattern: Verify Live State]]"],
+            ["[[Pattern: Kafka Rebalance Storm Recovery]]", "[[Pattern: Verify Live State]]"],
         )
         self.assertFalse(
-            (existing.parent / "pattern-kafka-rebalance-recovery.md").exists()
+            (existing.parent / "pattern-kafka-rebalance-storm-recovery.md").exists()
         )
         written = existing.parent / "pattern-verify-live-state.md"
         self.assertTrue(written.exists())
         update.assert_called_once_with([written])
+
+    def test_write_pages_two_word_overlap_is_not_a_duplicate(self):
+        existing = self.pages / "memory" / "context" / "context-write-insight-required-fields.md"
+        existing.parent.mkdir(parents=True)
+        existing.write_text("existing")
+        insights = {"context": [{"slug": "write-insight-lacks-session", "summary": "new",
+                                 "detail": "write", "tags": []}]}
+        with mock.patch.object(extractor, "_update_vault_index"):
+            extractor.write_pages(insights, "demo", "abcdef12", "2026-07-30-abcdef12",
+                                  "Session 2026-07-30 abcdef12 — demo", ["claude-sonnet-4-6"])
+        self.assertTrue((existing.parent / "context-write-insight-lacks-session.md").exists())
 
     def test_session_renderer_is_byte_frozen(self):
         insights = {"session_summary": "Completed the investigation."}

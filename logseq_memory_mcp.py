@@ -343,16 +343,10 @@ def _write_insight_unlocked(
         else list(_MANUAL_WRITES.get(insight_type, []))
     )
 
-    # Near-match dedup: exact slug match always blocks; prefix match needs
-    # ≥3 slug segments to avoid false positives (e.g. "access-logger" matching
-    # unrelated pages like "access-logger-rocksdb-state-dir-footprint").
-    slug_parts = slug.split("-")
-    existing = list(subdir.glob(f"{prefix}{slug}.md"))
-    if not existing and len(slug_parts) >= 3:
-        prefix_key = "-".join(slug_parts[:3])
-        existing = list(subdir.glob(f"{prefix}{prefix_key}*.md"))
-    if existing:
-        return f"Skipped — similar page already exists: {existing[0].name}"
+    # Near-match dedup: exact slug, or the same first three slug words.
+    existing = shared.find_slug_duplicate(subdir, prefix, slug)
+    if existing is not None:
+        return f"Skipped — similar page already exists: {existing.name}"
 
     # Same meaning, different wording: fold into the existing page instead of
     # adding a near-duplicate file. force=true writes a separate page anyway.
@@ -516,10 +510,7 @@ def _write_codex_insight(
             written = expected if expected in new_paths else sorted(new_paths)[0]
             return f"Written: {written}"
 
-        slug_words = item_slug.split("-")
-        prefix_2 = "-".join(slug_words[:2]) if len(slug_words) >= 2 else item_slug
-        matches = sorted(subdir.glob(f"{category}-{prefix_2}-*.md"))
-        duplicate = expected if expected.exists() else (matches[0] if matches else None)
+        duplicate = shared.find_slug_duplicate(subdir, f"{category}-", item_slug)
         return (
             f"Skipped — similar page already exists: {duplicate.name}"
             if duplicate
@@ -726,7 +717,7 @@ async def serve() -> None:
                 name="write_codex_insight",
                 description=(
                     "Create one Codex-authored insight using the automatic Claude "
-                    "page schema and two-word deduplication contract."
+                    "page schema and slug/semantic deduplication contract."
                 ),
                 inputSchema={
                     "type": "object",

@@ -292,7 +292,7 @@ class CodexOnDemandTests(TempEnvironment):
         self.pages_patch.stop()
         super().tearDown()
 
-    def test_on_demand_writer_uses_codex_provenance_and_two_word_dedup(self):
+    def test_on_demand_writer_uses_codex_provenance_and_three_word_dedup(self):
         session = "Session 2026-07-29 abcdef12 — demo"
         first = mcp._write_codex_insight(
             "decisions",
@@ -306,7 +306,7 @@ class CodexOnDemandTests(TempEnvironment):
         )
         second = mcp._write_codex_insight(
             "decisions",
-            "Use SessionEnd Hook",
+            "Use SessionEnd Lifecycle Hook",
             "Duplicate prefix.",
             "Must skip.",
             session,

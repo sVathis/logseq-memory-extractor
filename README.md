@@ -310,7 +310,7 @@ threshold. It never interrupts the task.
 Codex can also use `search_vault` and `read_page` through MCP whenever the
 topic changes or prior context may help. The `$extract-memory` skill searches
 for each candidate insight before calling `write_codex_insight`; the shared
-two-word slug check and semantic append in `write_pages()` remain the final
+slug check and semantic append in `write_pages()` remain the final
 race-safe guard.
 
 `SessionEnd` does not query the vault. It filters and queues the completed task
@@ -344,9 +344,7 @@ These controls, mostly in `logseq_memory_shared.py`, keep the vault from growing
 
 **write_insight burst guard** — the MCP server's `write_insight` tool counts how many pages it has already written to a category in this server process (one process per client session) and holds the write once that reaches 5 (`BURST_THRESHOLD`), suggesting the caller consolidate into one entry instead; pass `force: true` to write anyway. It counts per process rather than by `session::` marker because every `write_insight` page carries the same `Session <date> — manual` marker, which would pool unrelated sessions from the same day. Covers the interactive, one-insight-at-a-time path that the schema cap and hard truncate — both scoped to a single batch call — don't reach.
 
-**Slug near-match dedup** — before writing a new file, checks for an existing file with a similar slug in the category subdirectory, and skips the write if one exists. The rule differs by path:
-- `write_pages()` (Stop hook, Codex worker, `write_codex_insight`): any file sharing the first two slug words (e.g. `kafka-rebalance-storm` blocks `kafka-rebalance-recovery`).
-- `write_insight`: an exact slug match, or a shared first three slug words. Two words proved too broad for interactive writes (`access-logger-*` blocked unrelated pages).
+**Slug near-match dedup** — before writing a new file, every writer calls `find_slug_duplicate()` and skips the write if the category already has a file with the same slug or the same first three slug words (e.g. `kafka-rebalance-storm` blocks `kafka-rebalance-storm-recovery`, but not `kafka-rebalance-recovery`). Two words proved too broad: `access-logger-*` and `write-insight-*` silently blocked unrelated pages (`write_insight` moved to three words in July 2026, the batch writers on 2026-10-17).
 
 **Semantic dedup (append, not skip)** — after the slug checks, every write path (Stop hook, Codex adapter, `write_insight`, `write_codex_insight`) embeds the new note's `title. summary` and compares it with `vault_index.npz`. If an existing page in the same category directory scores at or above `LOGSEQ_DEDUP_MIN_SCORE` (default `0.88`, cosine), no new file is written: the note is appended to that page as a `## Update <date>` block (summary, source session, detail) and `last-updated::` is bumped. `write_insight(force=true)` writes a separate page anyway. Fails open: no numpy, no sentence-transformers or no index means the slug checks alone apply.
 

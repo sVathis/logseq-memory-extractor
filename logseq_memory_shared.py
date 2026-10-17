@@ -527,6 +527,23 @@ class SemanticIndex:
         self._paths.append(str(path))
 
 
+def find_slug_duplicate(subdir: Path, file_prefix: str, slug: str) -> Path | None:
+    """Existing page with the same slug, or sharing its first three slug words.
+
+    The one slug rule for every writer. Two words proved too broad: e.g.
+    "write-insight-*" blocked unrelated pages that merely shared a topic.
+    """
+    exact = subdir / f"{file_prefix}{slug}.md"
+    if exact.exists():
+        return exact
+    words = slug.split("-")
+    if len(words) >= 3:
+        matches = sorted(subdir.glob(f"{file_prefix}{'-'.join(words[:3])}*.md"))
+        if matches:
+            return matches[0]
+    return None
+
+
 def page_title(path: Path) -> str:
     try:
         for line in path.read_text(errors="replace").splitlines()[:5]:
@@ -617,12 +634,8 @@ def write_pages(
             ).strip("-")
             filename = f"{category}-{slug}"
             title = f"{category.title()}: {slug.replace('-', ' ').title()}"
-            slug_words = slug.split("-")
-            prefix_2 = "-".join(slug_words[:2]) if len(slug_words) >= 2 else slug
-            prefix_pattern = f"{category}-{prefix_2}-"
-            already_exists = any(True for _ in subdir.glob(f"{prefix_pattern}*.md"))
             dest = subdir / f"{filename}.md"
-            if not dest.exists() and not already_exists:
+            if find_slug_duplicate(subdir, f"{category}-", slug) is None:
                 summary = item.get("summary", "")
                 text = embedding_text(title, summary)
                 match = semantic.find(subdir, text) if semantic is not None else None
