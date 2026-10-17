@@ -150,7 +150,7 @@ def _staleness_label(path: Path) -> str:
     are looked up by name rather than taking whichever date comes first.
     """
     properties: dict[str, datetime] = {}
-    for line in path.read_text(errors="replace").splitlines()[:8]:
+    for line in path.read_text(errors="replace", encoding="utf-8").splitlines()[:8]:
         for key in ("last-updated", "date"):
             if line.startswith(f"{key}::"):
                 date_str = line.split("::", 1)[1].strip().strip("[]")
@@ -190,7 +190,7 @@ def _search(query: str, top_k: int, category: str | None) -> list[dict]:
                 "path": str(path),
                 "score": round(score, 3),
                 "staleness": _staleness_label(path),
-                "content": path.read_text(errors="replace")[:MAX_FILE_CHARS],
+                "content": path.read_text(errors="replace", encoding="utf-8")[:MAX_FILE_CHARS],
             })
         if len(results) >= top_k:
             break
@@ -210,7 +210,7 @@ def _read_page(path_str: str) -> str:
         return f"Refused — read_page only reads files under {vault_root}"
     if not p.is_file():
         return f"File not found: {path_str}"
-    return p.read_text(errors="replace")
+    return p.read_text(errors="replace", encoding="utf-8")
 
 
 def _make_slug(title: str) -> str:
@@ -269,7 +269,7 @@ def _check_line(line: str, lineno: int, is_property_zone: bool) -> list[str]:
 def _verify_page(filepath: Path) -> list[str]:
     """Post-write verification — check a single file for format violations."""
     issues = []
-    text = filepath.read_text(errors="replace")
+    text = filepath.read_text(errors="replace", encoding="utf-8")
     lines = text.splitlines()
 
     backtick_count = text.count("`")
@@ -298,7 +298,7 @@ def _lint_vault(category: str | None, limit: int) -> list[dict]:
             continue
         for p in sorted(d.glob("*.md")):
             scanned += 1
-            text = p.read_text(errors="replace")
+            text = p.read_text(errors="replace", encoding="utf-8")
             lines = text.splitlines()
             issues = []
 
@@ -434,7 +434,7 @@ def _write_insight_unlocked(
         f"- ## Detail\n"
         f"{_format_detail(detail_safe)}\n"
     )
-    filepath.write_text(content, encoding="utf-8")
+    filepath.write_text(content, encoding="utf-8", newline="\n")
     shared.update_vault_index([filepath], INDEX_PATH)
     if not session:
         _MANUAL_WRITES.setdefault(insight_type, []).append(filepath)
@@ -566,7 +566,7 @@ def _list_recent(category: str | None, limit: int) -> list[dict]:
         mtime = datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
         title = p.stem
         try:
-            for line in p.read_text(errors="replace").splitlines()[:5]:
+            for line in p.read_text(errors="replace", encoding="utf-8").splitlines()[:5]:
                 if line.startswith("title::"):
                     title = line.split("::", 1)[1].strip()
                     break

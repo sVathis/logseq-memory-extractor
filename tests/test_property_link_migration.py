@@ -46,23 +46,23 @@ class PropertyLinkMigrationTests(unittest.TestCase):
             root = Path(tmp) / "pages"
             page = root / "memory" / "patterns" / "pattern-provenance.md"
             page.parent.mkdir(parents=True)
-            page.write_text("creator:: claude\nmodel:: claude-sonnet-5\n")
+            page.write_text("creator:: claude\nmodel:: claude-sonnet-5\n", encoding="utf-8")
             ignored = root / "memory" / "notes.txt"
-            ignored.write_text("creator:: claude\n")
+            ignored.write_text("creator:: claude\n", encoding="utf-8")
             backup = Path(tmp) / "backup"
 
             changed = migration.migrate_pages(root, backup_dir=backup)
 
             self.assertEqual(changed, [page])
             self.assertEqual(
-                page.read_text(),
+                page.read_text(encoding="utf-8"),
                 "creator:: [[claude]]\nmodel:: [[claude-sonnet-5]]\n",
             )
             self.assertEqual(
-                (backup / "memory" / "patterns" / "pattern-provenance.md").read_text(),
+                (backup / "memory" / "patterns" / "pattern-provenance.md").read_text(encoding="utf-8"),
                 "creator:: claude\nmodel:: claude-sonnet-5\n",
             )
-            self.assertEqual(ignored.read_text(), "creator:: claude\n")
+            self.assertEqual(ignored.read_text(encoding="utf-8"), "creator:: claude\n")
 
 
 if __name__ == "__main__":

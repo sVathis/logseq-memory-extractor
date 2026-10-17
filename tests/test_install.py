@@ -56,14 +56,14 @@ class InstallerTests(unittest.TestCase):
 
     def write_json(self, path, data):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data))
+        path.write_text(json.dumps(data), encoding="utf-8")
 
     def read_json(self, path):
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
 
     def snapshot(self):
         return {
-            p: p.read_text()
+            p: p.read_text(encoding="utf-8")
             for p in self.home.rglob("*")
             if p.is_file() and "backups" not in p.parts
         }
@@ -73,7 +73,7 @@ class InstallerTests(unittest.TestCase):
         self.installer.install_files()
         bin_dir = self.home / ".logseq-memory" / "bin"
         for name in install.SCRIPTS:
-            self.assertEqual((bin_dir / name).read_text(), (install.REPO / name).read_text())
+            self.assertEqual((bin_dir / name).read_text(encoding="utf-8"), (install.REPO / name).read_text(encoding="utf-8"))
         config = self.read_json(self.home / ".logseq-memory" / "config.json")
         self.assertEqual(config["pages_dir"], str(self.pages))
         for category in install.CATEGORIES:
@@ -118,6 +118,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn(f"{self.pages.parent}/", allow)
         backups = list((self.home / ".logseq-memory" / "backups").rglob("*settings.json"))
         self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].parent.parent.name, "backups")  # one flat file name
 
     def test_claude_without_sandbox_config_gets_no_sandbox_block(self):
         self.installer.install_claude(desktop=False)
@@ -134,9 +135,9 @@ class InstallerTests(unittest.TestCase):
     def test_codex_config_preserves_other_tables_and_approvals(self):
         config = self.home / ".codex" / "config.toml"
         config.parent.mkdir(parents=True)
-        config.write_text(EXISTING_CODEX_CONFIG)
+        config.write_text(EXISTING_CODEX_CONFIG, encoding="utf-8")
         self.installer.install_codex()
-        text = config.read_text()
+        text = config.read_text(encoding="utf-8")
         python = str(self.home / ".logseq-memory" / "venv" / "bin" / "python")
         self.assertIn(f'command = "{python}"', text)
         self.assertNotIn("/old/", text)
@@ -168,7 +169,7 @@ class InstallerTests(unittest.TestCase):
         for command in commands:
             self.assertNotIn("__LOGSEQ", command)
             self.assertIn(str(self.home / ".logseq-memory" / "bin"), command)
-        skill = (self.home / ".codex" / "skills" / "extract-memory" / "SKILL.md").read_text()
+        skill = (self.home / ".codex" / "skills" / "extract-memory" / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("__LOGSEQ", skill)
         self.assertTrue((self.home / ".codex" / "skills" / "extract-memory" / "agents" / "openai.yaml").exists())
 
@@ -184,7 +185,7 @@ class InstallerTests(unittest.TestCase):
             str(spaced / ".logseq-memory" / "bin" / "logseq_memory_codex.py"),
             "enqueue",
         ])
-        skill = (spaced / ".codex" / "skills" / "extract-memory" / "SKILL.md").read_text()
+        skill = (spaced / ".codex" / "skills" / "extract-memory" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn(shlex.join([str(installer.python), str(installer.bin / "logseq_memory_codex.py"),
                                   "resolve-session"]), skill)
 
@@ -218,24 +219,24 @@ class InstallerTests(unittest.TestCase):
     def test_managed_block_is_added_once_and_removed_on_uninstall(self):
         claude_md = self.home / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
-        claude_md.write_text("# Mine\n\nKeep this.\n")
+        claude_md.write_text("# Mine\n\nKeep this.\n", encoding="utf-8")
         self.installer.install_claude(desktop=False)
         self.installer.install_claude(desktop=False)
-        text = claude_md.read_text()
+        text = claude_md.read_text(encoding="utf-8")
         self.assertEqual(text.count(install.BLOCK_BEGIN), 1)
         self.assertIn("Keep this.", text)
         self.assertIn(str(self.pages / "memory" / "digest.md"), text)
         self.installer.install_claude(desktop=False, remove=True)
-        self.assertEqual(claude_md.read_text(), "# Mine\n\nKeep this.\n")
+        self.assertEqual(claude_md.read_text(encoding="utf-8"), "# Mine\n\nKeep this.\n")
 
     def test_existing_hand_written_vault_section_is_left_alone(self):
         agents_md = self.home / ".codex" / "AGENTS.md"
         agents_md.parent.mkdir(parents=True)
-        agents_md.write_text(f"Read `{self.pages}/memory/digest.md` at start.\n")
-        agents_md.write_text(agents_md.read_text() + "\n\n")  # odd trailing blank lines
-        before = agents_md.read_text()
+        agents_md.write_text(f"Read `{self.pages}/memory/digest.md` at start.\n", encoding="utf-8")
+        agents_md.write_text(agents_md.read_text(encoding="utf-8") + "\n\n", encoding="utf-8")  # odd trailing blank lines
+        before = agents_md.read_text(encoding="utf-8")
         self.installer.install_codex()
-        self.assertEqual(agents_md.read_text(), before)
+        self.assertEqual(agents_md.read_text(encoding="utf-8"), before)
 
     # ------------------------------------------------- idempotency / dry run
     def test_second_run_changes_nothing(self):
@@ -260,7 +261,7 @@ class InstallerTests(unittest.TestCase):
     def test_uninstall_removes_all_registrations(self):
         config = self.home / ".codex" / "config.toml"
         config.parent.mkdir(parents=True)
-        config.write_text(EXISTING_CODEX_CONFIG)
+        config.write_text(EXISTING_CODEX_CONFIG, encoding="utf-8")
         self.installer.install_claude(desktop=False)
         self.installer.install_codex()
         self.installer.install_claude(desktop=False, remove=True)
@@ -269,7 +270,7 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn("logseq", json.dumps(settings))
         hooks = self.read_json(self.home / ".codex" / "hooks.json")
         self.assertNotIn("logseq_memory_", json.dumps(hooks))
-        text = config.read_text()
+        text = config.read_text(encoding="utf-8")
         self.assertNotIn("logseq_vault", text)
         self.assertIn("[mcp_servers.other]", text)
         self.assertFalse((self.home / ".codex" / "skills" / "extract-memory").exists())

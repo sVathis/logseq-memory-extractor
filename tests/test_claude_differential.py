@@ -1,4 +1,5 @@
 import importlib.util
+import locale
 import subprocess
 import tempfile
 import unittest
@@ -23,10 +24,11 @@ def load_baseline(root: Path):
         ["git", "show", f"{BASELINE_COMMIT}:logseq_memory_extractor.py"],
         check=True,
         text=True,
+        encoding="utf-8",
         stdout=subprocess.PIPE,
     ).stdout
     path = root / "legacy_logseq_memory_extractor.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     spec = importlib.util.spec_from_file_location("legacy_extractor", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -36,7 +38,7 @@ def load_baseline(root: Path):
 
 def snapshot_tree(root: Path) -> dict[str, bytes]:
     return {
-        str(path.relative_to(root)): path.read_bytes()
+        path.relative_to(root).as_posix(): path.read_bytes()
         for path in sorted(root.rglob("*"))
         if path.is_file()
     }
@@ -64,7 +66,11 @@ def current_tree_from_baseline(tree: dict[str, bytes]) -> dict[str, bytes]:
         # ("memory/" instead of "claude/"), and so are digest/index headings.
         if path.startswith("claude/"):
             path = "memory/" + path[len("claude/"):]
-        content = content.replace(
+        # Authorized change: pages are always written as UTF-8 with LF line
+        # endings (the baseline used the platform defaults: cp1252 and CRLF on
+        # Windows).
+        content = content.decode(locale.getpreferredencoding(False)).encode("utf-8")
+        content = content.replace(b"\r\n", b"\n").replace(
             b"# Claude Code Memory Digest", b"# Agent Memory Digest"
         ).replace(b"- # Claude Code Memory Index", b"- # Agent Memory Index")
         if not path.startswith(page_roots):

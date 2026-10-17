@@ -51,7 +51,7 @@ def migrate_pages(
         return []
     changed = []
     for path in sorted(root.rglob("*.md")):
-        content = path.read_text(errors="replace")
+        content = path.read_text(errors="replace", encoding="utf-8")
         updated = migrate_text(content)
         if updated == content:
             continue
@@ -60,7 +60,7 @@ def migrate_pages(
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, destination)
         if not dry_run:
-            path.write_text(updated)
+            path.write_text(updated, encoding="utf-8", newline="\n")
         changed.append(path)
     return changed
 

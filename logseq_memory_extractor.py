@@ -33,7 +33,7 @@ EXTRACTION_PROMPT = shared.extraction_prompt("Claude Code")
 def find_transcript(transcript_path: str | None, project_dir: str, session_id: str) -> str:
     # Prefer explicit path from Stop hook payload
     if transcript_path and Path(transcript_path).exists():
-        return Path(transcript_path).read_text(errors="replace")
+        return Path(transcript_path).read_text(errors="replace", encoding="utf-8")
 
     # Fall back: search ~/.claude/projects/ for a JSONL matching session_id
     projects_dir = Path("~/.claude/projects").expanduser()
@@ -42,7 +42,7 @@ def find_transcript(transcript_path: str | None, project_dir: str, session_id: s
 
     for jsonl in projects_dir.rglob("*.jsonl"):
         if session_id and session_id in jsonl.stem:
-            content = jsonl.read_text(errors="replace")
+            content = jsonl.read_text(errors="replace", encoding="utf-8")
             if content.strip():
                 return content
 
@@ -51,7 +51,7 @@ def find_transcript(transcript_path: str | None, project_dir: str, session_id: s
     for d in sorted(projects_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
         if d.is_dir():
             for jsonl in sorted(d.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
-                content = jsonl.read_text(errors="replace")
+                content = jsonl.read_text(errors="replace", encoding="utf-8")
                 if content.strip():
                     return content
 
@@ -111,6 +111,8 @@ def call_claude(transcript_text: str) -> dict:
         stderr=subprocess.PIPE,  # capture to surface errors; large output is stdout-only so no deadlock
         env=env,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=300,
     )
 

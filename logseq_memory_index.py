@@ -29,7 +29,7 @@ MAX_TEXT_CHARS = 500  # chars per file passed to the encoder (title + summary)
 def extract_text(path: Path) -> str:
     """Extract title + summary from a Logseq insight page for embedding."""
     try:
-        lines = path.read_text(errors="replace").splitlines()
+        lines = path.read_text(errors="replace", encoding="utf-8").splitlines()
     except OSError:
         return ""
 

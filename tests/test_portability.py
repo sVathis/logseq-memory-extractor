@@ -66,7 +66,7 @@ class InstallLocationTests(unittest.TestCase):
             home = Path(tmp) / "custom home"
             (home / "bin").mkdir(parents=True)
             shutil.copy(REPO / "logseq_memory_shared.py", home / "bin")
-            (home / "config.json").write_text(json.dumps({"pages_dir": str(Path(tmp) / "vault")}))
+            (home / "config.json").write_text(json.dumps({"pages_dir": str(Path(tmp) / "vault")}), encoding="utf-8")
             spec = importlib.util.spec_from_file_location("installed_shared", home / "bin" / "logseq_memory_shared.py")
             module = importlib.util.module_from_spec(spec)
             env = {k: v for k, v in os.environ.items()
@@ -80,7 +80,7 @@ class InstallLocationTests(unittest.TestCase):
     def test_find_cli_falls_back_to_recorded_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "claude"
-            binary.write_text("")
+            binary.write_text("", encoding="utf-8")
             with mock.patch.object(shared.shutil, "which", return_value=None), \
                     mock.patch.object(shared, "_home_config", return_value={"claude_bin": str(binary)}):
                 self.assertEqual(shared.find_cli("claude"), str(binary))

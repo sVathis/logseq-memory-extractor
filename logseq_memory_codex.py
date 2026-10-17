@@ -183,7 +183,7 @@ def parse_transcript(raw: str, fallback_model: str | None = None) -> ParsedTrans
 def parse_transcript_file(
     path: Path, fallback_model: str | None = None
 ) -> ParsedTranscript:
-    return parse_transcript(path.read_text(errors="replace"), fallback_model)
+    return parse_transcript(path.read_text(errors="replace", encoding="utf-8"), fallback_model)
 
 
 def _atomic_json(path: Path, payload: dict) -> None:
@@ -345,6 +345,8 @@ def call_codex(transcript: str) -> dict:
         command,
         input=shared.extraction_prompt("Codex") + transcript,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=_worker_environment(),
@@ -419,7 +421,7 @@ def process_job(queue_path: Path) -> int:
             os.replace(queue_path, running_path)
         if not running_path.exists():
             return 0
-        job = json.loads(running_path.read_text())
+        job = json.loads(running_path.read_text(encoding="utf-8"))
         models = job.get("models")
         if not isinstance(models, list) or not any(
             str(model).strip() for model in models

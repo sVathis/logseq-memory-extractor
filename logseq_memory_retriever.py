@@ -66,7 +66,7 @@ def retrieve(query: str) -> list[dict]:
             results.append({
                 "path": p,
                 "score": score,
-                "content": p.read_text(errors="replace")[:MAX_FILE_CHARS],
+                "content": p.read_text(errors="replace", encoding="utf-8")[:MAX_FILE_CHARS],
             })
     return results
 

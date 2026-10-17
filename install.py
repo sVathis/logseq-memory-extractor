@@ -94,18 +94,21 @@ class Installer:
 
     # ------------------------------------------------------------------ utils
     def _write(self, path: Path, text: str) -> None:
-        if path.exists() and path.read_text(errors="replace") == text:
+        if path.exists() and path.read_text(errors="replace", encoding="utf-8") == text:
             return
         if self.dry_run:
             self.out(f"  would write {path}")
             return
         if path.exists() and path not in self._backed_up:
-            target = self.backup_dir / str(path).lstrip("/").replace("/", "_")
+            # Flatten the absolute path into one file name. Joining it
+            # directly would, on Windows, yield the drive path itself.
+            name = "_".join(part.strip("\\/:") for part in path.parts if part.strip("\\/:"))
+            target = self.backup_dir / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(path, target)
             self._backed_up.add(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8", newline="\n")
         self.out(f"  wrote {path}")
 
     def _run(self, cmd: list[str], env: dict | None = None) -> None:
@@ -133,9 +136,9 @@ class Installer:
 
     @staticmethod
     def _load_json(path: Path) -> dict:
-        if not path.exists() or not path.read_text().strip():
+        if not path.exists() or not path.read_text(encoding="utf-8").strip():
             return {}
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise SystemExit(f"{path} is not a JSON object; refusing to edit it")
         return data
@@ -166,7 +169,7 @@ class Installer:
     def install_files(self) -> None:
         self.out("Shared files")
         for name in SCRIPTS:
-            self._write(self.bin / name, (REPO / name).read_text())
+            self._write(self.bin / name, (REPO / name).read_text(encoding="utf-8"))
         config_path = self.memory_home / "config.json"
         config = self._load_json(config_path)
         config["pages_dir"] = str(self.pages_dir)
@@ -288,7 +291,7 @@ class Installer:
 
     # ----------------------------------------------------------------- codex
     def codex_hooks(self, data: dict, remove: bool = False) -> dict:
-        template = json.loads((REPO / "codex" / "hooks.json").read_text())
+        template = json.loads((REPO / "codex" / "hooks.json").read_text(encoding="utf-8"))
         data.setdefault("description", template.get("description", ""))
         hooks = data.setdefault("hooks", {})
         for event, groups in template["hooks"].items():
@@ -351,7 +354,7 @@ class Installer:
         data = self.codex_hooks(self._load_json(hooks_path), remove)
         self._write(hooks_path, json.dumps(data, indent=2) + "\n")
         config = self.codex_dir / "config.toml"
-        current = config.read_text() if config.exists() else ""
+        current = config.read_text(encoding="utf-8") if config.exists() else ""
         self._write(config, self.codex_config(current, remove))
         skill_src = REPO / "codex" / "skills" / "extract-memory"
         skill_dst = self.codex_dir / "skills" / "extract-memory"
@@ -361,7 +364,7 @@ class Installer:
                 self.out(f"  removed {skill_dst}")
         else:
             for src in sorted(p for p in skill_src.rglob("*") if p.is_file()):
-                self._write(skill_dst / src.relative_to(skill_src), self._fill(src.read_text()))
+                self._write(skill_dst / src.relative_to(skill_src), self._fill(src.read_text(encoding="utf-8")))
         self._instructions(self.codex_dir / "AGENTS.md", self._codex_block(), remove)
 
     # ---------------------------------------------------------- instructions
@@ -391,7 +394,7 @@ class Installer:
         ])
 
     def _instructions(self, path: Path, block: str, remove: bool) -> None:
-        text = path.read_text() if path.exists() else ""
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
         pattern = re.compile(re.escape(BLOCK_BEGIN) + r".*?" + re.escape(BLOCK_END) + r"\n?", re.S)
         has_block = pattern.search(text) is not None
         outside = pattern.sub("", text)
@@ -484,7 +487,7 @@ def _resolve_pages_dir(arg: str | None, memory_home: Path) -> Path | None:
     if os.environ.get("LOGSEQ_PAGES_DIR"):
         return Path(os.environ["LOGSEQ_PAGES_DIR"]).expanduser().resolve()
     try:
-        configured = json.loads((memory_home / "config.json").read_text()).get("pages_dir")
+        configured = json.loads((memory_home / "config.json").read_text(encoding="utf-8")).get("pages_dir")
     except (OSError, ValueError, AttributeError):
         configured = None
     if configured:

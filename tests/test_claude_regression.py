@@ -260,7 +260,7 @@ tags:: [[incident]], [[retry]]
     def test_write_pages_three_word_dedup_and_links(self):
         existing = self.pages / "memory" / "patterns" / "pattern-kafka-rebalance-storm.md"
         existing.parent.mkdir(parents=True)
-        existing.write_text("existing")
+        existing.write_text("existing", encoding="utf-8")
         insights = {
             "patterns": [
                 {
@@ -300,7 +300,7 @@ tags:: [[incident]], [[retry]]
     def test_write_pages_two_word_overlap_is_not_a_duplicate(self):
         existing = self.pages / "memory" / "context" / "context-write-insight-required-fields.md"
         existing.parent.mkdir(parents=True)
-        existing.write_text("existing")
+        existing.write_text("existing", encoding="utf-8")
         insights = {"context": [{"slug": "write-insight-lacks-session", "summary": "new",
                                  "detail": "write", "tags": []}]}
         with mock.patch.object(extractor, "_update_vault_index"):
@@ -343,7 +343,7 @@ exclude-from-graph-view:: true
 - ## Insights
   - [[Pattern: Retry Safely]]
 """
-        self.assertEqual(path.read_text(), expected)
+        self.assertEqual(path.read_text(encoding="utf-8"), expected)
 
     def test_digest_and_index_are_byte_frozen(self):
         page = self.pages / "memory" / "patterns" / "pattern-retry.md"
@@ -353,10 +353,10 @@ exclude-from-graph-view:: true
             "type:: [[pattern]]\n"
             "date:: [[2026/07/29]]\n\n"
             "- ## Summary\n"
-            "  - Verify before retrying.\n"
+            "  - Verify before retrying.\n", encoding="utf-8"
         )
         extractor.write_digest()
-        digest = (self.pages / "memory" / "digest.md").read_text()
+        digest = (self.pages / "memory" / "digest.md").read_text(encoding="utf-8")
         self.assertEqual(
             digest,
             """# Agent Memory Digest
@@ -369,7 +369,7 @@ Read this at session start to recall accumulated insights.
 """,
         )
         extractor.update_index()
-        index = (self.pages / "memory" / "index.md").read_text()
+        index = (self.pages / "memory" / "index.md").read_text(encoding="utf-8")
         self.assertIn("- # Agent Memory Index", index)
         self.assertIn("query-properties:: [:title :date :project :tags]", index)
         self.assertTrue(index.startswith("updated:: [[2026/07/30]]\n"))
@@ -384,7 +384,7 @@ class AdjacentClaudeComponentTests(unittest.TestCase):
                 "- ## Summary\n"
                 "  - First fact\n"
                 "  - Second fact\n"
-                "- ## Detail\n"
+                "- ## Detail\n", encoding="utf-8"
             )
             self.assertEqual(
                 indexer.extract_text(path),
@@ -423,7 +423,7 @@ class AdjacentClaudeComponentTests(unittest.TestCase):
                 )
             self.assertTrue(result.startswith("Written: "))
             path = next((pages / "memory" / "decisions").glob("*.md"))
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             self.assertIn(
                 "creator:: [[claude]]\nmodel:: [[claude-sonnet-4-6]]\n",
                 content,

@@ -59,7 +59,7 @@ CONFIG_PATH = MEMORY_HOME / "config.json"
 def _home_config() -> dict:
     """Settings written by install.py (e.g. {"pages_dir": ...}); empty if absent."""
     try:
-        data = json.loads(CONFIG_PATH.read_text())
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -440,7 +440,7 @@ def page_content(
 
 def index_extract_text(path: Path) -> str:
     try:
-        lines = path.read_text(errors="replace").splitlines()
+        lines = path.read_text(errors="replace", encoding="utf-8").splitlines()
     except OSError:
         return ""
     title = ""
@@ -616,7 +616,7 @@ def find_slug_duplicate(subdir: Path, file_prefix: str, slug: str) -> Path | Non
 
 def page_title(path: Path) -> str:
     try:
-        for line in path.read_text(errors="replace").splitlines()[:5]:
+        for line in path.read_text(errors="replace", encoding="utf-8").splitlines()[:5]:
             if line.startswith("title::"):
                 return line[7:].strip()
     except OSError:
@@ -634,7 +634,7 @@ def append_update(
 ) -> None:
     """Fold a same-meaning note into an existing page as a dated update."""
     today_text = logseq_date(today)
-    lines = path.read_text(errors="replace").rstrip("\n").split("\n")
+    lines = path.read_text(errors="replace", encoding="utf-8").rstrip("\n").split("\n")
     for i, line in enumerate(lines):
         if line.startswith("last-updated::"):
             lines[i] = f"last-updated:: {today_text}"
@@ -653,7 +653,7 @@ def append_update(
     ]
     if detail_lines:
         lines += [f"  - {detail_lines[0]}"] + detail_lines[1:]
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def write_pages(
@@ -733,7 +733,7 @@ def write_pages(
                     creator=creator,
                     today=today,
                 )
-                dest.write_text(content.lstrip("\n"))
+                dest.write_text(content.lstrip("\n"), encoding="utf-8", newline="\n")
                 new_paths.append(dest)
                 if semantic is not None:
                     semantic.add(dest, text)
@@ -794,7 +794,7 @@ def write_session(
         "- ## Insights",
     ] + [f"  - {link}" for link in written_links] + [""]
     (sessions_dir / f"{session_slug}.md").write_text(
-        "\n".join(lines).lstrip("\n")
+        "\n".join(lines).lstrip("\n"), encoding="utf-8", newline="\n"
     )
 
 
@@ -808,7 +808,7 @@ def write_digest(pages_dir: Path, today: date | None = None) -> None:
             continue
         for path in subdir.glob("*.md"):
             try:
-                text = path.read_text(errors="replace")
+                text = path.read_text(errors="replace", encoding="utf-8")
             except OSError:
                 continue
             lines = text.splitlines()
@@ -863,7 +863,7 @@ def write_digest(pages_dir: Path, today: date | None = None) -> None:
                     break
             output.append(f"- **{short}** ({date_str}) — {summary}")
         output.append("")
-    (memory_root(pages_dir) / "digest.md").write_text("\n".join(output))
+    (memory_root(pages_dir) / "digest.md").write_text("\n".join(output), encoding="utf-8", newline="\n")
 
 
 _INDEX_TEMPLATE = """{updated}
@@ -917,9 +917,9 @@ def update_index(pages_dir: Path, today: date | None = None) -> None:
     path = memory_root(pages_dir) / "index.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
-        path.write_text(_INDEX_TEMPLATE.format(updated=f"updated:: {today_text}"))
+        path.write_text(_INDEX_TEMPLATE.format(updated=f"updated:: {today_text}"), encoding="utf-8", newline="\n")
     else:
-        existing = path.read_text()
+        existing = path.read_text(encoding="utf-8")
         updated = re.sub(
             r"^updated::.*$",
             f"updated:: {today_text}",
@@ -927,7 +927,7 @@ def update_index(pages_dir: Path, today: date | None = None) -> None:
             count=1,
             flags=re.MULTILINE,
         )
-        path.write_text(updated)
+        path.write_text(updated, encoding="utf-8", newline="\n")
 
 
 def find_session_entries(subdir: Path, session_marker: str) -> list[Path]:
@@ -943,7 +943,7 @@ def find_session_entries(subdir: Path, session_marker: str) -> list[Path]:
     matches: list[Path] = []
     for path in sorted(subdir.glob("*.md")):
         try:
-            for line in path.read_text(errors="replace").splitlines()[:10]:
+            for line in path.read_text(errors="replace", encoding="utf-8").splitlines()[:10]:
                 if line.startswith("session::") and marker in line:
                     matches.append(path)
                     break

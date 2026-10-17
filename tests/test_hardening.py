@@ -32,12 +32,12 @@ class ReadPageScopeTests(unittest.TestCase):
     def test_reads_files_inside_the_graph(self):
         journal = self.root / "graph" / "journals" / "2026_10_17.md"
         journal.parent.mkdir()
-        journal.write_text("- hello")
+        journal.write_text("- hello", encoding="utf-8")
         self.assertEqual(mcp._read_page(str(journal)), "- hello")
 
     def test_refuses_files_outside_the_graph(self):
         secret = self.root / "secret.txt"
-        secret.write_text("token")
+        secret.write_text("token", encoding="utf-8")
         self.assertTrue(mcp._read_page(str(secret)).startswith("Refused"))
         escape = self.pages / ".." / ".." / "secret.txt"
         self.assertTrue(mcp._read_page(str(escape)).startswith("Refused"))
@@ -52,7 +52,7 @@ class StalenessLabelTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def label(self, *props):
-        self.page.write_text("title:: T\n" + "".join(p + "\n" for p in props))
+        self.page.write_text("title:: T\n" + "".join(p + "\n" for p in props), encoding="utf-8")
         return mcp._staleness_label(self.page)
 
     @staticmethod

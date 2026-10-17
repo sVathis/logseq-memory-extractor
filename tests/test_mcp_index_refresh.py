@@ -22,8 +22,8 @@ class IndexRefreshTests(unittest.TestCase):
         self.pages.mkdir()
         self.old = self.pages / 'old.md'
         self.new = self.pages / 'new.md'
-        self.old.write_text('old page')
-        self.new.write_text('new page')
+        self.old.write_text('old page', encoding="utf-8")
+        self.new.write_text('new page', encoding="utf-8")
         self.constructor = mock.Mock()
         self.constructor.return_value.encode.return_value = np.array([[1., 0.]])
         for patch in [

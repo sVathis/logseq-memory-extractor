@@ -1,4 +1,5 @@
 import json
+import sys
 import os
 import tempfile
 import time
@@ -161,7 +162,7 @@ class CodexWorkerTests(TempEnvironment):
                 turn("gpt-5.6-sol"),
                 message("user", "A sufficiently long task prompt " * 12),
                 message("assistant", "A sufficiently long result " * 12),
-            )
+            ), encoding="utf-8"
         )
         return path
 
@@ -180,7 +181,8 @@ class CodexWorkerTests(TempEnvironment):
             self.assertEqual(codex.enqueue(payload), 0)
             self.assertEqual(popen.call_count, 1)
         job = self.root / "state" / "queue" / "session-123.json"
-        self.assertEqual(job.stat().st_mode & 0o777, 0o600)
+        if os.name != "nt":  # Windows has no POSIX permission bits
+            self.assertEqual(job.stat().st_mode & 0o777, 0o600)
 
     def test_worker_uses_original_model_and_claude_page_contract(self):
         fake = self.root / "fake-codex"
@@ -201,9 +203,13 @@ class CodexWorkerTests(TempEnvironment):
         fake.write_text(
             "#!/usr/bin/env python3\n"
             "import json\n"
-            f"print(json.dumps({response!r}))\n"
+            f"print(json.dumps({response!r}))\n", encoding="utf-8"
         )
         fake.chmod(0o755)
+        if os.name == "nt":  # Windows cannot exec a #! script; wrap it in a .cmd
+            wrapper = fake.with_suffix(".cmd")
+            wrapper.write_text(f'@"{sys.executable}" "{fake}" %*\n', encoding="utf-8")
+            fake = wrapper
         job_path = self.root / "state" / "queue" / "session-456.json"
         job_path.parent.mkdir(parents=True)
         job_path.write_text(
@@ -217,20 +223,20 @@ class CodexWorkerTests(TempEnvironment):
                     "transcript": "User: test\nAssistant: result",
                     "models": ["gpt-5.6-sol"],
                 }
-            )
+            ), encoding="utf-8"
         )
         with mock.patch.object(codex, "CODEX_BIN", str(fake)):
             self.assertEqual(codex.process_job(job_path), 0)
 
         page = next((self.root / "pages" / "memory" / "context").glob("*.md"))
-        content = page.read_text()
+        content = page.read_text(encoding="utf-8")
         self.assertIn("creator:: [[codex]]", content)
         self.assertIn("model:: [[gpt-5.6-sol]]", content)
         self.assertNotIn("model:: [[gpt-5.6-terra]]", content)
         self.assertIn("last-updated:: [[2026/07/29]]", content)
         session = next(
             (self.root / "pages" / "memory" / "sessions").rglob("*.md")
-        ).read_text()
+        ).read_text(encoding="utf-8")
         self.assertIn("title:: Session 2026-07-29 session- — test", session)
         self.assertIn("creator:: [[codex]]", session)
         self.assertIn("last-updated:: [[2026/07/29]]", session)
@@ -251,21 +257,21 @@ class CodexWorkerTests(TempEnvironment):
                     "transcript": "SECRET TRANSCRIPT",
                     "models": ["gpt-5.6-sol"],
                 }
-            )
+            ), encoding="utf-8"
         )
         with mock.patch.object(
             codex, "call_codex", side_effect=RuntimeError("synthetic failure")
         ):
             self.assertEqual(codex.process_job(job_path), 1)
         failed = self.root / "state" / "failed" / "session-789.json"
-        content = failed.read_text()
+        content = failed.read_text(encoding="utf-8")
         self.assertIn("synthetic failure", content)
         self.assertNotIn("SECRET TRANSCRIPT", content)
         self.assertFalse((self.root / "state" / "running" / "session-789.json").exists())
 
     def test_resolve_session_returns_canonical_identity(self):
         self._write_transcript("thread-abc")
-        with tempfile.SpooledTemporaryFile(mode="w+") as stdout:
+        with tempfile.SpooledTemporaryFile(mode="w+", encoding="utf-8") as stdout:
             with mock.patch("sys.stdout", stdout):
                 self.assertEqual(codex.resolve_session("thread-abc"), 0)
             stdout.seek(0)
@@ -318,7 +324,7 @@ class CodexOnDemandTests(TempEnvironment):
         self.assertTrue(second.startswith("Skipped"))
         pages = list((self.root / "pages" / "memory" / "decisions").glob("*.md"))
         self.assertEqual(len(pages), 1)
-        content = pages[0].read_text()
+        content = pages[0].read_text(encoding="utf-8")
         self.assertIn("creator:: [[codex]]", content)
         self.assertIn("model:: [[gpt-5.6-sol]]", content)
         self.assertIn(f"session:: [[{session}]]", content)

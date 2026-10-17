@@ -53,7 +53,7 @@ def existing_page(path: Path, title: str, summary: str) -> Path:
         f"  - {summary}\n"
         "\n"
         "- ## Detail\n"
-        "  - Original detail.\n"
+        "  - Original detail.\n", encoding="utf-8"
     )
     return path
 
@@ -125,7 +125,7 @@ class SemanticDedupTests(unittest.TestCase):
                          [self.existing.name])
         self.assertEqual(report, [("appended", self.existing)])
         self.assertEqual(links, ["[[Pattern: Retry Kafka Producer Sends]]"])
-        text = self.existing.read_text()
+        text = self.existing.read_text(encoding="utf-8")
         self.assertIn("last-updated:: [[2026/10/17]]", text)
         self.assertIn("- ## Update [[2026/10/17]]", text)
         self.assertIn("  - From [[Session 2026-10-17 abc — demo]]", text)
@@ -145,7 +145,7 @@ class SemanticDedupTests(unittest.TestCase):
         )
         self.assertEqual(report[0][0], "written")
         self.assertTrue((self.patterns / "pattern-pin-helm-chart-versions.md").exists())
-        self.assertNotIn("## Update", self.existing.read_text())
+        self.assertNotIn("## Update", self.existing.read_text(encoding="utf-8"))
 
     def test_same_batch_duplicates_fold_into_first_new_page(self):
         item = {"summary": "Pin helm chart versions in gitops releases", "detail": "x", "tags": []}
@@ -164,7 +164,7 @@ class SemanticDedupTests(unittest.TestCase):
             index_path=self.root / "missing.npz",
         )
         self.assertEqual(report[0][0], "written")
-        self.assertNotIn("## Update", self.existing.read_text())
+        self.assertNotIn("## Update", self.existing.read_text(encoding="utf-8"))
 
     def test_match_outside_target_directory_is_ignored(self):
         other = existing_page(
@@ -178,7 +178,7 @@ class SemanticDedupTests(unittest.TestCase):
               "summary": "Pin helm chart versions in gitops releases", "detail": "x", "tags": []}]
         )
         self.assertEqual(report[0][0], "written")
-        self.assertNotIn("## Update", other.read_text())
+        self.assertNotIn("## Update", other.read_text(encoding="utf-8"))
 
     def test_score_below_threshold_writes_new_page(self):
         index = shared.SemanticIndex(self.index, encode=fake_encode, threshold=0.99)
@@ -202,7 +202,7 @@ class SemanticDedupTests(unittest.TestCase):
                 "claude-opus-5-5", [], "demo", "Session 2026-10-17 abc — demo",
             )
             self.assertIn("Appended as update to similar page", result)
-            self.assertIn("## Update", self.existing.read_text())
+            self.assertIn("## Update", self.existing.read_text(encoding="utf-8"))
             forced = mcp._write_insight(
                 "patterns", "Backoff On Producer Retries",
                 "Retry kafka producer sends with backoff", "More detail.",
