@@ -10,7 +10,7 @@ Exposes six tools:
   lint_vault     — scan vault for Logseq format violations
   write_codex_insight — write a Codex insight through the shared page contract
 
-The server loads the embedding model and index once at startup.
+The server loads the embedding model once and refreshes a changed index on search.
 Set TRANSFORMERS_OFFLINE=1 and HF_DATASETS_OFFLINE=1 in the MCP server
 env config to avoid HuggingFace network calls when the model is cached.
 
@@ -35,6 +35,8 @@ Register with each MCP client (Claude Code / Desktop mcpServers, Codex config.to
 import asyncio
 import re
 import subprocess
+import sys
+from zipfile import BadZipFile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -76,29 +78,52 @@ _TYPE_PREFIX = {
 }
 
 # ---------------------------------------------------------------------------
-# Index + model — loaded once at first use
+# Model loaded once; index refreshed on file changes
 # ---------------------------------------------------------------------------
 
 _model = None
 _embeddings = None
 _paths = None
+_index_signature = None
+
+
+def _index_version():
+    stat = INDEX_PATH.stat()
+    # Include identity for atomic replacement even if size/mtime are preserved.
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
 
 
 def _ensure_loaded() -> bool:
-    global _model, _embeddings, _paths
-    if _embeddings is not None:
+    global _model, _embeddings, _paths, _index_signature
+    try:
+        signature = _index_version()
+    except OSError:
+        return False
+    if _embeddings is not None and signature == _index_signature:
         return True
     try:
         import numpy as np
         from sentence_transformers import SentenceTransformer
     except ImportError:
         return False
-    if not INDEX_PATH.exists():
+    try:
+        # Rebuilds and incremental writers use this same lock. Read both arrays
+        # from one completed version, never from a partially rewritten archive.
+        with shared.vault_lock():
+            signature = _index_version()
+            with np.load(INDEX_PATH, allow_pickle=True) as data:
+                embeddings = data["embeddings"]
+                paths = data["paths"]
+            if embeddings.ndim != 2 or paths.ndim != 1 or len(embeddings) != len(paths):
+                raise ValueError("Index embeddings and paths have incompatible shapes")
+    except (OSError, ValueError, KeyError, EOFError, BadZipFile) as exc:
+        # Do not serve stale results or mark this version loaded. Retry on the
+        # next search, including after an interrupted writer has repaired it.
+        print(f"[logseq-memory] index reload unavailable: {exc}", file=sys.stderr)
         return False
-    data = np.load(INDEX_PATH, allow_pickle=True)
-    _embeddings = data["embeddings"]
-    _paths = data["paths"]
-    _model = SentenceTransformer(MODEL_NAME)
+    if _model is None:
+        _model = SentenceTransformer(MODEL_NAME)
+    _embeddings, _paths, _index_signature = embeddings, paths, signature
     return True
 
 

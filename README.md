@@ -526,6 +526,15 @@ If you have a SOCKS proxy active (`ALL_PROXY` env var), also unset it: `env -u A
 TRANSFORMERS_OFFLINE=1 python3 ~/.logseq-memory/bin/logseq_memory_index.py --quiet
 ```
 
+## Search index freshness
+
+The MCP server checks the index file identity, size and nanosecond modification
+and change times on each search. A changed index is reloaded under the shared
+writer lock; unchanged searches reuse the loaded arrays and embedding model.
+A missing or invalid index is retried on the next search without serving stale
+results. Reconnect the MCP server once after installing updated server code;
+subsequent index updates do not require a restart.
+
 ## Regression and compatibility tests
 
 Claude's original implementation is the compatibility specification. Commit
