@@ -369,7 +369,9 @@ class Installer:
 
     # ---------------------------------------------------------- instructions
     def _memory_lines(self) -> list[str]:
-        root = self.pages_dir / "memory"
+        # Forward slashes on every platform: Windows accepts them, and a
+        # single separator keeps the paths readable in Markdown.
+        root = (self.pages_dir / "memory").as_posix()
         return [
             "## Persistent memory (Logseq vault)",
             "",
@@ -405,9 +407,11 @@ class Installer:
             if has_block:
                 self._write(path, outside)
             return
-        digest = str(self.pages_dir / "memory" / "digest.md")
-        tilde = digest.replace(str(self.home), "~", 1)
-        if digest in outside or tilde in outside:
+        # Match the digest path written with either separator, absolute or ~/.
+        digest = (self.pages_dir / "memory" / "digest.md").as_posix()
+        tilde = digest.replace(self.home.as_posix(), "~", 1)
+        normalized = outside.replace("\\", "/")
+        if digest in normalized or tilde in normalized:
             self.out(f"  {path} already describes the vault; left unchanged")
             if has_block:  # drop a stale managed block next to it
                 self._write(path, outside)

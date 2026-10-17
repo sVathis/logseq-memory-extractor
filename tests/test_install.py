@@ -139,7 +139,7 @@ class InstallerTests(unittest.TestCase):
         self.installer.install_codex()
         text = config.read_text(encoding="utf-8")
         python = str(self.home / ".logseq-memory" / "venv" / "bin" / "python")
-        self.assertIn(f'command = "{python}"', text)
+        self.assertIn(f"command = {json.dumps(python)}", text)  # TOML-escaped
         self.assertNotIn("/old/", text)
         self.assertIn("required = true", text)
         self.assertIn("approval_mode = 'approve'", text)
@@ -225,9 +225,18 @@ class InstallerTests(unittest.TestCase):
         text = claude_md.read_text(encoding="utf-8")
         self.assertEqual(text.count(install.BLOCK_BEGIN), 1)
         self.assertIn("Keep this.", text)
-        self.assertIn(str(self.pages / "memory" / "digest.md"), text)
+        self.assertIn((self.pages / "memory" / "digest.md").as_posix(), text)
         self.installer.install_claude(desktop=False, remove=True)
         self.assertEqual(claude_md.read_text(encoding="utf-8"), "# Mine\n\nKeep this.\n")
+
+    def test_hand_written_section_with_native_separators_is_recognised(self):
+        claude_md = self.home / ".claude" / "CLAUDE.md"
+        claude_md.parent.mkdir(parents=True)
+        native = str(self.pages / "memory" / "digest.md").replace("/", "\\")
+        claude_md.write_text(f"Read `{native}` first.\n", encoding="utf-8")
+        before = claude_md.read_text(encoding="utf-8")
+        self.installer.install_claude(desktop=False)
+        self.assertEqual(claude_md.read_text(encoding="utf-8"), before)
 
     def test_existing_hand_written_vault_section_is_left_alone(self):
         agents_md = self.home / ".codex" / "AGENTS.md"
