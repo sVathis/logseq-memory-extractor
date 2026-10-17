@@ -21,7 +21,7 @@ Session ends
   → Stop hook fires logseq_memory_extractor.py
     → Reads session transcript (JSONL)
     → Calls claude -p to extract structured insights
-    → Writes one Logseq page per insight under pages/claude/
+    → Writes one Logseq page per insight under pages/memory/
       (or appends to an existing same-meaning page, see Accumulation controls)
     → Updates the vault index incrementally (if built)
     → Regenerates digest.md — plain-text summary for Claude to read at session start
@@ -42,7 +42,7 @@ Mid-conversation (optional MCP server)
 Codex task ends
   → SessionEnd snapshots the filtered task transcript and original models
   → Detached ephemeral gpt-5.6-terra worker extracts structured insights
-  → Shared Claude-compatible writer saves pages with creator:: [[codex]]
+  → Shared writer saves pages with creator:: [[codex]]
   → $extract-memory writes individual Codex insights on demand
 ```
 
@@ -62,152 +62,131 @@ are still skipped without touching the existing page.
 
 ## Installation
 
-### Claude Code
+Nothing in the shared layer belongs to one agent. Scripts, the semantic index and
+the write lock live in one agent-neutral home, `~/.logseq-memory/`
+(`LOGSEQ_MEMORY_HOME`), and memory pages live in `<vault>/pages/memory/`.
+Claude Code and Codex each only register hooks and the MCP server that point at
+the shared scripts.
 
-#### 1. Copy the Claude scripts
+```
+~/.logseq-memory/
+├── bin/                  ← all scripts + codex_extraction_schema.json
+├── vault_index.npz       ← shared semantic index
+├── vault_index.lock      ← shared write lock
+└── retriever_disabled    ← optional: create to pause prompt retrieval
+```
+
+### 1. Install the shared scripts
 
 ```sh
-mkdir -p ~/.claude/hooks
-for script in logseq_memory_shared logseq_memory_extractor logseq_memory_index logseq_memory_retriever logseq_memory_mcp logseq_memory_migrate_links; do
-  curl -o ~/.claude/hooks/${script}.py \
-    https://raw.githubusercontent.com/svathis-vgs/logseq-memory-extractor/main/${script}.py
+mkdir -p ~/.logseq-memory/bin
+for f in logseq_memory_shared.py logseq_memory_extractor.py logseq_memory_index.py \
+         logseq_memory_retriever.py logseq_memory_mcp.py logseq_memory_migrate_links.py \
+         logseq_memory_codex.py codex_extraction_schema.json; do
+  curl -o ~/.logseq-memory/bin/$f \
+    https://raw.githubusercontent.com/svathis-vgs/logseq-memory-extractor/main/$f
 done
 ```
 
-#### 2. Configure the vault path
+### 2. Configure paths
 
-The vault path is a module constant, not an environment variable, in the Claude
-scripts. Each defaults to `~/VGS/Notes/pages`; change it in all three:
+Defaults: vault pages at `~/VGS/Notes/pages`, index and lock under
+`~/.logseq-memory/`. Override with environment variables in each hook and MCP
+registration (`env` blocks), or edit the defaults in `logseq_memory_shared.py`:
 
-```python
-# logseq_memory_extractor.py, logseq_memory_index.py, logseq_memory_mcp.py
-LOGSEQ_PAGES_DIR = Path("~/path/to/your/vault/pages").expanduser()
+| Variable | Default |
+|----------|---------|
+| `LOGSEQ_PAGES_DIR` | `~/VGS/Notes/pages` |
+| `LOGSEQ_MEMORY_HOME` | `~/.logseq-memory` |
+| `LOGSEQ_INDEX_PATH` | `$LOGSEQ_MEMORY_HOME/vault_index.npz` |
+| `LOGSEQ_LOCK_PATH` | `$LOGSEQ_MEMORY_HOME/vault_index.lock` |
+
+### 3. Build the semantic index (one-time)
+
+```sh
+pip install sentence-transformers numpy mcp
+python3 ~/.logseq-memory/bin/logseq_memory_index.py
 ```
 
-The Codex adapter instead reads the `LOGSEQ_PAGES_DIR` and `LOGSEQ_INDEX_PATH`
-environment variables (same defaults).
+This embeds the title and summary of every page in `memory/patterns/`,
+`memory/mistakes/`, `memory/decisions/` and `memory/context/` (session pages are
+not indexed). Rebuilding takes roughly 1 minute per 8,000 files and holds the
+vault write lock for its duration. New pages from every write path are appended
+to the index automatically.
 
-#### 3. Register the hooks
+### 4. Register with Claude Code
 
-Add to `~/.claude/settings.json`:
+Desktop apps launch hooks and MCP servers without sourcing your shell profile,
+so use the full Python path printed by
+`python3 -c "import sys; print(sys.executable)"` (shown below as `PY`).
+
+Hooks, in `~/.claude/settings.json`:
 
 ```json
 {
   "hooks": {
     "Stop": [
-      {
-        "matcher": "",
-        "hooks": [{"type": "command", "command": "python3 /Users/YOU/.claude/hooks/logseq_memory_extractor.py"}]
-      }
+      {"matcher": "", "hooks": [{"type": "command",
+        "command": "PY /Users/YOU/.logseq-memory/bin/logseq_memory_extractor.py"}]}
     ],
     "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 /Users/YOU/.claude/hooks/logseq_memory_retriever.py",
-            "timeout": 10
-          }
-        ]
-      }
+      {"matcher": "", "hooks": [{"type": "command",
+        "command": "PY /Users/YOU/.logseq-memory/bin/logseq_memory_retriever.py",
+        "timeout": 10}]}
     ]
   }
 }
 ```
-
-Replace `/Users/YOU` with your home directory path.
 
 The Stop hook entry has no explicit `timeout`, so Claude Code's default applies;
 the extractor itself gives `claude -p` up to 300 s. Transcripts under 200
 characters are skipped. A session page is written even when no insight is
 extracted, and the hook exits 1 if extraction fails.
 
-#### 4. Register the MCP server (optional but recommended)
-
-The MCP server enables Claude to search the vault mid-conversation and write insights immediately without waiting for session end.
-
-**Important:** Desktop apps launch MCP servers without sourcing your shell
-profile, so `python3` may resolve to nothing and pyenv shims can fail silently.
-Use the full resolved binary path:
-
-```sh
-python3 -c "import sys; print(sys.executable)"
-```
-
-Add the server under `"mcpServers"`. The reference install registers the same
-entry in both `~/.claude/settings.json` and the Desktop app's
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
+MCP server (optional but recommended), under `"mcpServers"`. The reference
+install registers the same entry in both `~/.claude/settings.json` and the
+Desktop app's `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "logseq-vault": {
-      "command": "/Users/YOU/.pyenv/versions/3.x.x/bin/python3",
-      "args": ["/Users/YOU/.claude/hooks/logseq_memory_mcp.py"],
-      "env": {
-        "TRANSFORMERS_OFFLINE": "1",
-        "HF_DATASETS_OFFLINE": "1"
-      }
+      "command": "PY",
+      "args": ["/Users/YOU/.logseq-memory/bin/logseq_memory_mcp.py"],
+      "env": {"TRANSFORMERS_OFFLINE": "1", "HF_DATASETS_OFFLINE": "1"}
     }
   }
 }
 ```
 
-Replace the python path with the output of the command above. The `TRANSFORMERS_OFFLINE` flags prevent the embedding model from trying to reach HuggingFace on startup — the model is already cached locally after the index build step.
+The `TRANSFORMERS_OFFLINE` flags stop the embedding model from reaching
+HuggingFace on startup; it is cached locally after the index build. Restart
+Claude Desktop after editing.
 
-Restart Claude Code Desktop after editing the configuration.
-
-#### 5. Add memory injection to CLAUDE.md
-
-Create or edit `~/.claude/CLAUDE.md`:
+Point the agent at the digest, e.g. in `~/.claude/CLAUDE.md`:
 
 ```markdown
-## Persistent Memory
-
-At the start of each session, read `~/path/to/your/vault/pages/claude/digest.md`
+At the start of each session, read `~/path/to/your/vault/pages/memory/digest.md`
 for accumulated patterns, mistakes, decisions, and context from previous sessions.
-This file is regenerated by the Stop hook, the Codex worker and
-write_codex_insight; mid-session write_insight calls do not refresh it.
 ```
 
-#### 6. Build the semantic index (one-time)
+The digest is regenerated by the Stop hook, the Codex worker and
+`write_codex_insight`; mid-session `write_insight` calls do not refresh it.
 
-```sh
-pip install sentence-transformers numpy mcp
-python3 ~/.claude/hooks/logseq_memory_index.py
-```
+### 5. Register with Codex
 
-This embeds the title and summary of every page in `patterns/`, `mistakes/`,
-`decisions/` and `context/` (session pages are not indexed) and saves
-`~/.claude/vault_index.npz`. Rebuilding takes roughly 1 minute per 8,000 files
-and holds the vault write lock for its duration. New pages from every write path
-are appended to the index automatically.
-
-### Codex
-
-Codex shares the Claude vault, semantic index, and MCP server. Complete the vault
-path and index setup above before enabling Codex.
-
-#### 1. Copy the Codex adapter, hook configuration, and skill
-
-Copy `logseq_memory_codex.py`, `logseq_memory_shared.py`,
-`logseq_memory_retriever.py`, and `codex_extraction_schema.json` into
-`~/.codex/hooks/`. Copy `codex/hooks.json` to `~/.codex/hooks.json` and copy
-`codex/skills/extract-memory/` to `~/.codex/skills/extract-memory/`.
-
-`codex/hooks.json` and `SKILL.md` contain absolute
-`/Users/spiros/.pyenv/versions/3.13.0/bin/python3` and `~/.codex/hooks/` paths;
-replace them with your own before use. The hooks are `SessionEnd` →
-`logseq_memory_codex.py enqueue` (3 s timeout; it parses and queues the
-transcript synchronously, then detaches the worker) and `UserPromptSubmit` →
-`logseq_memory_retriever.py` (10 s timeout, `additionalContextLimit` 5000).
+Copy `codex/hooks.json` to `~/.codex/hooks.json` and
+`codex/skills/extract-memory/` to `~/.codex/skills/extract-memory/`. Both contain
+absolute `/Users/spiros/.pyenv/versions/3.13.0/bin/python3` and
+`/Users/spiros/.logseq-memory/bin/` paths; replace them with your own. The hooks
+are `SessionEnd` → `logseq_memory_codex.py enqueue` (3 s timeout; it parses and
+queues the transcript synchronously, then detaches the worker) and
+`UserPromptSubmit` → `logseq_memory_retriever.py` (10 s timeout,
+`additionalContextLimit` 5000).
 
 `codex_extraction_schema.json` is a hand-maintained copy of
 `logseq_memory_shared.extraction_schema()` (plus `additionalProperties: false`
 and `$defs`). Nothing keeps the two in sync automatically; update both together.
-
-#### 2. Enable and trust lifecycle hooks
 
 Enable lifecycle hooks in `~/.codex/config.toml`:
 
@@ -221,31 +200,41 @@ Restart Codex, then use `/hooks` to review and trust the hook definitions.
 normally, or after an unopened task has been idle for 30 minutes. Switching
 tasks alone does not end the session.
 
-#### 3. Register the shared MCP server
-
-Use the full Python binary path printed by:
-
-```sh
-python3 -c "import sys; print(sys.executable)"
-```
-
-Add the server to `~/.codex/config.toml`:
-
-Use `logseq_vault` (underscore) as the server name: the bundled skill calls
-`mcp__logseq_vault__*` tools.
+Register the shared MCP server in `~/.codex/config.toml`. Use `logseq_vault`
+(underscore) as the server name: the bundled skill calls `mcp__logseq_vault__*`
+tools.
 
 ```toml
 [mcp_servers.logseq_vault]
-command = "/Users/YOU/.pyenv/versions/3.x.x/bin/python3"
-args = ["/Users/YOU/.claude/hooks/logseq_memory_mcp.py"]
+command = "PY"
+args = ["/Users/YOU/.logseq-memory/bin/logseq_memory_mcp.py"]
 
 [mcp_servers.logseq_vault.env]
 TRANSFORMERS_OFFLINE = "1"
 HF_DATASETS_OFFLINE = "1"
 ```
 
-Restart Codex after editing the configuration. The server uses the shared Claude
-implementation and index rather than a separate Codex copy.
+Restart Codex after editing the configuration.
+
+### Migrating from the `pages/claude/` layout
+
+Earlier versions wrote pages to `<vault>/pages/claude/` and kept scripts, index
+and lock under `~/.claude/` (and a script copy in `~/.codex/hooks/`). Logseq
+names pages by file name, not folder, so moving the folder keeps every page
+name and link intact. With both agents closed:
+
+```sh
+mv ~/VGS/Notes/pages/claude ~/VGS/Notes/pages/memory
+mkdir -p ~/.logseq-memory/bin
+cp <repo>/logseq_memory_*.py <repo>/codex_extraction_schema.json ~/.logseq-memory/bin/
+python3 ~/.logseq-memory/bin/logseq_memory_index.py
+```
+
+Then repoint the Claude and Codex hook and MCP registrations at
+`~/.logseq-memory/bin/`, update any agent instructions that reference
+`pages/claude/digest.md`, and remove the old copies from `~/.claude/hooks/` and
+`~/.codex/hooks/`. The old `~/.claude/vault_retriever_disabled` flag is still
+honored.
 
 Codex pages use the existing `Session YYYY-MM-DD <id> — <project>` naming and
 carry explicit provenance:
@@ -275,7 +264,7 @@ Codex adapter settings (environment variables):
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `LOGSEQ_PAGES_DIR` | `~/VGS/Notes/pages` | Vault `pages/` directory |
-| `LOGSEQ_INDEX_PATH` | `~/.claude/vault_index.npz` | Shared semantic index |
+| `LOGSEQ_INDEX_PATH` | `~/.logseq-memory/vault_index.npz` | Shared semantic index |
 | `CODEX_LOGSEQ_STATE_DIR` | `~/.codex/logseq-memory` | Queue, running, processed, failed and logs |
 | `CODEX_LOGSEQ_EXTRACTION_MODEL` | `gpt-5.6-terra` | Model for the detached extraction worker |
 | `CODEX_BIN` | `codex` on `PATH` | Codex CLI used by the worker |
@@ -315,7 +304,7 @@ similarity into the next model context as a system reminder.
 
 Retrieval silently produces no injected context when the index or embedding
 dependencies are unavailable, the manual disable flag
-`~/.claude/vault_retriever_disabled` exists, or no page clears the similarity
+`~/.logseq-memory/retriever_disabled` (or the legacy `~/.claude/vault_retriever_disabled`) exists, or no page clears the similarity
 threshold. It never interrupts the task.
 
 Codex can also use `search_vault` and `read_page` through MCP whenever the
@@ -399,7 +388,7 @@ Run periodically or after bulk imports to catch format issues before they create
 
 ```
 pages/
-└── claude/
+└── memory/
     ├── index.md          ← Logseq query-driven master index (created once; later only `updated::` is rewritten, so your own notes below the queries are kept)
     ├── digest.md         ← Plain-text summary for Claude to read (regenerated each session)
     ├── patterns/
@@ -522,13 +511,13 @@ python3 logseq_memory_migrate_links.py --pages-dir /absolute/path/to/vault/pages
 ```
 
 The migration is idempotent. It changes only `creator::` and `model::` property
-lines in Markdown files under `pages/claude/`; already linked values remain
+lines in Markdown files under `pages/memory/`; already linked values remain
 unchanged.
 
 **Rebuild the full index** (after vault consolidation or model change):
 
 ```sh
-TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 python3 ~/.claude/hooks/logseq_memory_index.py
+TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 python3 ~/.logseq-memory/bin/logseq_memory_index.py
 ```
 
 If you have a SOCKS proxy active (`ALL_PROXY` env var), also unset it: `env -u ALL_PROXY ...`. The model is cached locally and never needs a network call after the first build.
@@ -536,7 +525,7 @@ If you have a SOCKS proxy active (`ALL_PROXY` env var), also unset it: `env -u A
 **Rebuild quietly** (no progress bar, for cron jobs):
 
 ```sh
-TRANSFORMERS_OFFLINE=1 python3 ~/.claude/hooks/logseq_memory_index.py --quiet
+TRANSFORMERS_OFFLINE=1 python3 ~/.logseq-memory/bin/logseq_memory_index.py --quiet
 ```
 
 ## Regression and compatibility tests
@@ -591,18 +580,18 @@ variable, so `claude -p` authenticates as a fresh CLI invocation.
 
 ## Configuration reference
 
-The Claude scripts are configured by editing module constants; they do not read
-environment variables. The exceptions, read by `logseq_memory_shared.py` on
-every path, are `LOGSEQ_DEDUP_MIN_SCORE` (semantic-dedup threshold, default
-`0.88`) and `LOGSEQ_LOCK_PATH` (vault write lock file). Codex adapter variables
-are listed in the [Codex](#codex) section.
+Paths come from `logseq_memory_shared.py` and can be overridden by environment:
+`LOGSEQ_PAGES_DIR`, `LOGSEQ_MEMORY_HOME`, `LOGSEQ_INDEX_PATH`, `LOGSEQ_LOCK_PATH`
+(see [Configure paths](#2-configure-paths)) and `LOGSEQ_DEDUP_MIN_SCORE`
+(semantic-dedup threshold, default `0.88`). The remaining settings below are
+module constants. Codex adapter variables are listed in the Codex section.
 
 ### logseq_memory_extractor.py
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `LOGSEQ_PAGES_DIR` | `~/VGS/Notes/pages` | Absolute path to your vault's `pages/` directory |
-| `INDEX_PATH` | `~/.claude/vault_index.npz` | Index used for incremental updates and semantic dedup |
+| `LOGSEQ_PAGES_DIR` | `shared.DEFAULT_PAGES_DIR` | Absolute path to your vault's `pages/` directory |
+| `INDEX_PATH` | `shared.DEFAULT_INDEX_PATH` | Index used for incremental updates and semantic dedup |
 | `CLAUDE_BIN` | `claude` on `PATH`, else `/Users/spiros/.local/bin/claude` | Path to the `claude` CLI binary |
 | `MAX_TRANSCRIPT_CHARS` | `12000` | Transcript truncation limit (~3k tokens) |
 
@@ -610,8 +599,8 @@ are listed in the [Codex](#codex) section.
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `LOGSEQ_PAGES_DIR` | `~/VGS/Notes/pages` | Same vault path as the extractor (index only) |
-| `INDEX_PATH` | `~/.claude/vault_index.npz` | Where the compressed index is stored |
+| `LOGSEQ_PAGES_DIR` | `shared.DEFAULT_PAGES_DIR` | Same vault path as the extractor (index only) |
+| `INDEX_PATH` | `shared.DEFAULT_INDEX_PATH` | Where the compressed index is stored |
 | `MODEL_NAME` | `all-MiniLM-L6-v2` | sentence-transformers model (384-dim, ~22 MB) |
 | `TOP_K` | `5` | Max results returned per prompt (retriever) |
 | `MIN_SCORE` | `0.38` | Cosine similarity floor — results below this are dropped |
@@ -621,8 +610,8 @@ are listed in the [Codex](#codex) section.
 
 | Constant | Default | Description |
 |----------|---------|-------------|
-| `LOGSEQ_PAGES_DIR` | `~/VGS/Notes/pages` | Same vault path as the other scripts |
-| `INDEX_PATH` | `~/.claude/vault_index.npz` | Shared index file |
+| `LOGSEQ_PAGES_DIR` | `shared.DEFAULT_PAGES_DIR` | Same vault path as the other scripts |
+| `INDEX_PATH` | `shared.DEFAULT_INDEX_PATH` | Shared index file |
 | `MODEL_NAME` | `all-MiniLM-L6-v2` | Same model as the retriever |
 | `MIN_SCORE` | `0.38` | Cosine similarity floor for `search_vault` |
 | `MAX_FILE_CHARS` | `1500` | Characters per search result (larger than retriever — not auto-injected) |

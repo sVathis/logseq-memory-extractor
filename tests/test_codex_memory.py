@@ -222,14 +222,14 @@ class CodexWorkerTests(TempEnvironment):
         with mock.patch.object(codex, "CODEX_BIN", str(fake)):
             self.assertEqual(codex.process_job(job_path), 0)
 
-        page = next((self.root / "pages" / "claude" / "context").glob("*.md"))
+        page = next((self.root / "pages" / "memory" / "context").glob("*.md"))
         content = page.read_text()
         self.assertIn("creator:: [[codex]]", content)
         self.assertIn("model:: [[gpt-5.6-sol]]", content)
         self.assertNotIn("model:: [[gpt-5.6-terra]]", content)
         self.assertIn("last-updated:: [[2026/07/29]]", content)
         session = next(
-            (self.root / "pages" / "claude" / "sessions").rglob("*.md")
+            (self.root / "pages" / "memory" / "sessions").rglob("*.md")
         ).read_text()
         self.assertIn("title:: Session 2026-07-29 session- — test", session)
         self.assertIn("creator:: [[codex]]", session)
@@ -316,7 +316,7 @@ class CodexOnDemandTests(TempEnvironment):
         )
         self.assertTrue(first.startswith("Written: "))
         self.assertTrue(second.startswith("Skipped"))
-        pages = list((self.root / "pages" / "claude" / "decisions").glob("*.md"))
+        pages = list((self.root / "pages" / "memory" / "decisions").glob("*.md"))
         self.assertEqual(len(pages), 1)
         content = pages[0].read_text()
         self.assertIn("creator:: [[codex]]", content)
@@ -344,7 +344,7 @@ class CodexOnDemandTests(TempEnvironment):
         with ThreadPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(write, range(4)))
         self.assertEqual(sum(result.startswith("Written") for result in results), 1)
-        pages = list((self.root / "pages" / "claude" / "patterns").glob("*.md"))
+        pages = list((self.root / "pages" / "memory" / "patterns").glob("*.md"))
         self.assertEqual(len(pages), 1)
 
     def test_missing_models_and_noncanonical_session_do_not_write(self):

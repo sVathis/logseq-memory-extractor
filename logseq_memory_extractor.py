@@ -19,8 +19,8 @@ from pathlib import Path
 import logseq_memory_shared as shared
 
 # ── Config ────────────────────────────────────────────────────────────────────
-LOGSEQ_PAGES_DIR = Path("~/VGS/Notes/pages").expanduser()
-INDEX_PATH = Path("~/.claude/vault_index.npz").expanduser()
+LOGSEQ_PAGES_DIR = shared.DEFAULT_PAGES_DIR
+INDEX_PATH = shared.DEFAULT_INDEX_PATH
 CLAUDE_BIN = shutil.which("claude") or "/Users/spiros/.local/bin/claude"
 MAX_TRANSCRIPT_CHARS = 12_000  # ~3k tokens — keeps prompts fast via the claude CLI
 
@@ -276,7 +276,7 @@ def main() -> None:
         write_digest()
 
     print(
-        f"[logseq-memory] {len(written_links)} insight(s) → {LOGSEQ_PAGES_DIR}/claude/",
+        f"[logseq-memory] {len(written_links)} insight(s) → {shared.memory_root(LOGSEQ_PAGES_DIR)}/",
         file=sys.stderr,
     )
 

@@ -46,7 +46,7 @@ def migrate_text(content: str) -> str:
 def migrate_pages(
     pages_dir: Path, *, dry_run: bool = False, backup_dir: Path | None = None
 ) -> list[Path]:
-    root = pages_dir / "claude"
+    root = pages_dir / "memory"
     if not root.exists():
         return []
     changed = []

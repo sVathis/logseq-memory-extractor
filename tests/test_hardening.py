@@ -1,3 +1,4 @@
+import os
 import contextlib
 import tempfile
 import unittest
@@ -8,6 +9,11 @@ import logseq_memory_codex as codex
 import logseq_memory_index as indexer
 import logseq_memory_mcp as mcp
 from tests.test_codex_memory import jsonl, message, session_meta, turn
+
+# Keep the vault write lock out of the real ~/.logseq-memory during tests.
+os.environ.setdefault(
+    "LOGSEQ_LOCK_PATH", os.path.join(tempfile.gettempdir(), "logseq-memory-test.lock")
+)
 
 
 class ReadPageScopeTests(unittest.TestCase):

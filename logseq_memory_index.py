@@ -19,8 +19,8 @@ from pathlib import Path
 
 import logseq_memory_shared as shared
 
-LOGSEQ_PAGES_DIR = Path("~/VGS/Notes/pages").expanduser()
-INDEX_PATH = Path("~/.claude/vault_index.npz").expanduser()
+LOGSEQ_PAGES_DIR = shared.DEFAULT_PAGES_DIR
+INDEX_PATH = shared.DEFAULT_INDEX_PATH
 CATEGORIES = ["patterns", "mistakes", "decisions", "context"]
 MODEL_NAME = "all-MiniLM-L6-v2"
 MAX_TEXT_CHARS = 500  # chars per file passed to the encoder (title + summary)
@@ -80,7 +80,7 @@ def _rebuild(model, np, verbose: bool) -> None:
     texts: list[str] = []
 
     for cat in CATEGORIES:
-        subdir = LOGSEQ_PAGES_DIR / "claude" / cat
+        subdir = shared.memory_root(LOGSEQ_PAGES_DIR) / cat
         if not subdir.exists():
             continue
         for p in sorted(subdir.glob("*.md")):

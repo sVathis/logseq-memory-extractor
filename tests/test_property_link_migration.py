@@ -44,10 +44,10 @@ class PropertyLinkMigrationTests(unittest.TestCase):
     def test_migrates_only_markdown_files_and_can_create_rollback_backup(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "pages"
-            page = root / "claude" / "patterns" / "pattern-provenance.md"
+            page = root / "memory" / "patterns" / "pattern-provenance.md"
             page.parent.mkdir(parents=True)
             page.write_text("creator:: claude\nmodel:: claude-sonnet-5\n")
-            ignored = root / "claude" / "notes.txt"
+            ignored = root / "memory" / "notes.txt"
             ignored.write_text("creator:: claude\n")
             backup = Path(tmp) / "backup"
 
@@ -59,7 +59,7 @@ class PropertyLinkMigrationTests(unittest.TestCase):
                 "creator:: [[claude]]\nmodel:: [[claude-sonnet-5]]\n",
             )
             self.assertEqual(
-                (backup / "claude" / "patterns" / "pattern-provenance.md").read_text(),
+                (backup / "memory" / "patterns" / "pattern-provenance.md").read_text(),
                 "creator:: claude\nmodel:: claude-sonnet-5\n",
             )
             self.assertEqual(ignored.read_text(), "creator:: claude\n")

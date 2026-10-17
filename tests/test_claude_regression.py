@@ -15,6 +15,11 @@ import logseq_memory_index as indexer
 import logseq_memory_mcp as mcp
 import logseq_memory_retriever as retriever
 
+# Keep the vault write lock out of the real ~/.logseq-memory during tests.
+os.environ.setdefault(
+    "LOGSEQ_LOCK_PATH", os.path.join(tempfile.gettempdir(), "logseq-memory-test.lock")
+)
+
 
 FIXED_DATE = date(2026, 7, 30)
 
@@ -253,7 +258,7 @@ tags:: [[incident]], [[retry]]
         self.assertEqual(actual, expected)
 
     def test_write_pages_preserves_two_word_dedup_and_links(self):
-        existing = self.pages / "claude" / "patterns" / "pattern-kafka-rebalance-storm.md"
+        existing = self.pages / "memory" / "patterns" / "pattern-kafka-rebalance-storm.md"
         existing.parent.mkdir(parents=True)
         existing.write_text("existing")
         insights = {
@@ -305,7 +310,7 @@ tags:: [[incident]], [[retry]]
         )
         path = (
             self.pages
-            / "claude"
+            / "memory"
             / "sessions"
             / "2026_07_30"
             / "2026-07-30-abcdef12.md"
@@ -330,7 +335,7 @@ exclude-from-graph-view:: true
         self.assertEqual(path.read_text(), expected)
 
     def test_digest_and_index_are_byte_frozen(self):
-        page = self.pages / "claude" / "patterns" / "pattern-retry.md"
+        page = self.pages / "memory" / "patterns" / "pattern-retry.md"
         page.parent.mkdir(parents=True)
         page.write_text(
             "title:: Pattern: Retry Safely\n"
@@ -340,10 +345,10 @@ exclude-from-graph-view:: true
             "  - Verify before retrying.\n"
         )
         extractor.write_digest()
-        digest = (self.pages / "claude" / "digest.md").read_text()
+        digest = (self.pages / "memory" / "digest.md").read_text()
         self.assertEqual(
             digest,
-            """# Claude Code Memory Digest
+            """# Agent Memory Digest
 _Updated: 2026-07-30 — 1 patterns, 0 mistakes, 0 decisions, 0 context_
 
 Read this at session start to recall accumulated insights.
@@ -353,8 +358,8 @@ Read this at session start to recall accumulated insights.
 """,
         )
         extractor.update_index()
-        index = (self.pages / "claude" / "index.md").read_text()
-        self.assertIn("- # Claude Code Memory Index", index)
+        index = (self.pages / "memory" / "index.md").read_text()
+        self.assertIn("- # Agent Memory Index", index)
         self.assertIn("query-properties:: [:title :date :project :tags]", index)
         self.assertTrue(index.startswith("updated:: [[2026/07/30]]\n"))
 
@@ -406,7 +411,7 @@ class AdjacentClaudeComponentTests(unittest.TestCase):
                     "demo",
                 )
             self.assertTrue(result.startswith("Written: "))
-            path = next((pages / "claude" / "decisions").glob("*.md"))
+            path = next((pages / "memory" / "decisions").glob("*.md"))
             content = path.read_text()
             self.assertIn(
                 "creator:: [[claude]]\nmodel:: [[claude-sonnet-4-6]]\n",

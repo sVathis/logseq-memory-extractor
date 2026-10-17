@@ -17,7 +17,7 @@ env config to avoid HuggingFace network calls when the model is cached.
 Requirements:
     pip install mcp sentence-transformers numpy
 
-Register in ~/.claude/settings.json:
+Register with each MCP client (Claude Code / Desktop mcpServers, Codex config.toml):
     {
       "mcpServers": {
         "logseq-vault": {
@@ -48,8 +48,8 @@ def _notify(title: str, message: str) -> None:
         capture_output=True,
     )
 
-LOGSEQ_PAGES_DIR = Path("~/VGS/Notes/pages").expanduser()
-INDEX_PATH = Path("~/.claude/vault_index.npz").expanduser()
+LOGSEQ_PAGES_DIR = shared.DEFAULT_PAGES_DIR
+INDEX_PATH = shared.DEFAULT_INDEX_PATH
 MODEL_NAME = "all-MiniLM-L6-v2"
 MIN_SCORE = 0.38
 MAX_FILE_CHARS = 1500
@@ -256,8 +256,8 @@ def _verify_page(filepath: Path) -> list[str]:
 def _lint_vault(category: str | None, limit: int) -> list[dict]:
     """Scan vault files for Logseq format violations."""
     dirs = (
-        [LOGSEQ_PAGES_DIR / "claude" / category] if category
-        else [LOGSEQ_PAGES_DIR / "claude" / c for c in CATEGORIES]
+        [shared.memory_root(LOGSEQ_PAGES_DIR) / category] if category
+        else [shared.memory_root(LOGSEQ_PAGES_DIR) / c for c in CATEGORIES]
     )
     if category and category not in CATEGORIES:
         return [{"error": f"Unknown category '{category}'"}]
@@ -331,7 +331,7 @@ def _write_insight_unlocked(
 
     prefix = _TYPE_PREFIX[insight_type]
     slug = _make_slug(title)
-    subdir = LOGSEQ_PAGES_DIR / "claude" / insight_type
+    subdir = shared.memory_root(LOGSEQ_PAGES_DIR) / insight_type
     subdir.mkdir(parents=True, exist_ok=True)
     session_str = session or f"Session {datetime.now().strftime('%Y-%m-%d')} — manual"
     # Every session-less write on a given day shares the "manual" marker, so
@@ -482,7 +482,7 @@ def _write_codex_insight(
         "tags": tags or [],
     }
     category = insight_type.rstrip("s")
-    subdir = LOGSEQ_PAGES_DIR / "claude" / insight_type
+    subdir = shared.memory_root(LOGSEQ_PAGES_DIR) / insight_type
     expected = subdir / f"{category}-{item_slug}.md"
     current = date.today()
 
@@ -529,8 +529,8 @@ def _write_codex_insight(
 
 def _list_recent(category: str | None, limit: int) -> list[dict]:
     dirs = (
-        [LOGSEQ_PAGES_DIR / "claude" / category] if category
-        else [LOGSEQ_PAGES_DIR / "claude" / c for c in CATEGORIES]
+        [shared.memory_root(LOGSEQ_PAGES_DIR) / category] if category
+        else [shared.memory_root(LOGSEQ_PAGES_DIR) / c for c in CATEGORIES]
     )
     if category and category not in CATEGORIES:
         return [{"error": f"Unknown category '{category}'"}]

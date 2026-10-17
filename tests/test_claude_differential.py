@@ -53,13 +53,20 @@ def linked_values(value: bytes) -> bytes:
 def current_tree_from_baseline(tree: dict[str, bytes]) -> dict[str, bytes]:
     expected = {}
     page_roots = (
-        "claude/patterns/",
-        "claude/mistakes/",
-        "claude/decisions/",
-        "claude/context/",
-        "claude/sessions/",
+        "memory/patterns/",
+        "memory/mistakes/",
+        "memory/decisions/",
+        "memory/context/",
+        "memory/sessions/",
     )
     for path, content in tree.items():
+        # Authorized change: the vault subdirectory is agent-neutral
+        # ("memory/" instead of "claude/"), and so are digest/index headings.
+        if path.startswith("claude/"):
+            path = "memory/" + path[len("claude/"):]
+        content = content.replace(
+            b"# Claude Code Memory Digest", b"# Agent Memory Digest"
+        ).replace(b"- # Claude Code Memory Index", b"- # Agent Memory Index")
         if not path.startswith(page_roots):
             expected[path] = content
             continue

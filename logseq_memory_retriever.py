@@ -8,8 +8,8 @@ contents to stdout — which Claude Code injects into the next model context as 
 system reminder.
 
 Prerequisites:
-  1. Run logseq_memory_index.py once to build ~/.claude/vault_index.npz
-  2. Register this script as a UserPromptSubmit hook in ~/.claude/settings.json
+  1. Run logseq_memory_index.py once to build ~/.logseq-memory/vault_index.npz
+  2. Register this script as a UserPromptSubmit hook (Claude Code or Codex)
      (see README for the exact snippet)
 
 Requirements:
@@ -21,7 +21,9 @@ import os
 import sys
 from pathlib import Path
 
-INDEX_PATH = Path("~/.claude/vault_index.npz").expanduser()
+import logseq_memory_shared as shared
+
+INDEX_PATH = shared.DEFAULT_INDEX_PATH
 MODEL_NAME = "all-MiniLM-L6-v2"
 TOP_K = 5
 MIN_SCORE = 0.38   # cosine similarity floor — results below this are noise
@@ -72,8 +74,8 @@ def main() -> None:
     if os.environ.get("LOGSEQ_EXTRACTOR_RUNNING"):
         sys.exit(0)
 
-    # Honour manual disable flag (set via /vault-off skill)
-    if Path("~/.claude/vault_retriever_disabled").expanduser().exists():
+    # Honour manual disable flag (shared flag, or the legacy /vault-off one)
+    if any(flag.exists() for flag in shared.RETRIEVER_DISABLED_FLAGS):
         sys.exit(0)
 
     # Parse hook payload — Claude Code writes JSON on stdin for UserPromptSubmit

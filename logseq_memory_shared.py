@@ -27,6 +27,28 @@ TYPE_MAP = {
     "context": "[[context]]",
 }
 MAX_ITEMS_PER_CATEGORY = 5
+
+# Agent-neutral locations. The vault subdirectory and the shared home (index,
+# lock, installed scripts) are not tied to any one agent; Claude and Codex both
+# read and write the same paths. Each can be overridden by environment.
+MEMORY_DIRNAME = "memory"
+MEMORY_HOME = Path(os.environ.get("LOGSEQ_MEMORY_HOME", "~/.logseq-memory")).expanduser()
+DEFAULT_PAGES_DIR = Path(
+    os.environ.get("LOGSEQ_PAGES_DIR", "~/VGS/Notes/pages")
+).expanduser()
+DEFAULT_INDEX_PATH = Path(
+    os.environ.get("LOGSEQ_INDEX_PATH", str(MEMORY_HOME / "vault_index.npz"))
+).expanduser()
+RETRIEVER_DISABLED_FLAGS = (
+    MEMORY_HOME / "retriever_disabled",
+    # Legacy flag still written by the Claude vault-toggle skill.
+    Path("~/.claude/vault_retriever_disabled").expanduser(),
+)
+
+
+def memory_root(pages_dir: Path) -> Path:
+    """The vault directory holding all agent memory pages."""
+    return Path(pages_dir) / MEMORY_DIRNAME
 DAYFLOW_KEYWORDS = (
     "screenshot",
     "screen recording",
@@ -584,7 +606,7 @@ def write_pages(
         # out everything else recent in that category.
         if len(items) > MAX_ITEMS_PER_CATEGORY:
             items = items[:MAX_ITEMS_PER_CATEGORY]
-        subdir = pages_dir / "claude" / key
+        subdir = memory_root(pages_dir) / key
         subdir.mkdir(parents=True, exist_ok=True)
         category = key.rstrip("s")
         for item in items:
@@ -660,7 +682,7 @@ def write_session(
     current = today or date.today()
     today_text = logseq_date(current)
     date_folder = current.strftime("%Y_%m_%d")
-    sessions_dir = pages_dir / "claude" / "sessions" / date_folder
+    sessions_dir = memory_root(pages_dir) / "sessions" / date_folder
     sessions_dir.mkdir(parents=True, exist_ok=True)
     session_date = today_text.strip("[]").replace("/", "-")
     session_title = f"Session {session_date} {session_id} — {project_name}"
@@ -698,7 +720,7 @@ def write_digest(pages_dir: Path, today: date | None = None) -> None:
     today_text = current.isoformat()
     all_insights: list[tuple[str, str, str, str]] = []
     for category in CATEGORIES:
-        subdir = pages_dir / "claude" / category
+        subdir = memory_root(pages_dir) / category
         if not subdir.exists():
             continue
         for path in subdir.glob("*.md"):
@@ -736,7 +758,7 @@ def write_digest(pages_dir: Path, today: date | None = None) -> None:
         by_category[category].append((date_str, title, summary))
     totals = {category: len(by_category[category]) for category in CATEGORIES}
     output = [
-        "# Claude Code Memory Digest",
+        "# Agent Memory Digest",
         f"_Updated: {today_text} — "
         f"{totals['patterns']} patterns, {totals['mistakes']} mistakes, "
         f"{totals['decisions']} decisions, {totals['context']} context_",
@@ -758,12 +780,12 @@ def write_digest(pages_dir: Path, today: date | None = None) -> None:
                     break
             output.append(f"- **{short}** ({date_str}) — {summary}")
         output.append("")
-    (pages_dir / "claude" / "digest.md").write_text("\n".join(output))
+    (memory_root(pages_dir) / "digest.md").write_text("\n".join(output))
 
 
 _INDEX_TEMPLATE = """{updated}
 
-- # Claude Code Memory Index
+- # Agent Memory Index
   - Auto-generated. Add your own notes below the query sections.
 
 - ## Sessions
@@ -809,7 +831,7 @@ _INDEX_TEMPLATE = """{updated}
 
 def update_index(pages_dir: Path, today: date | None = None) -> None:
     today_text = logseq_date(today)
-    path = pages_dir / "claude" / "index.md"
+    path = memory_root(pages_dir) / "index.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         path.write_text(_INDEX_TEMPLATE.format(updated=f"updated:: {today_text}"))
@@ -849,7 +871,7 @@ def find_session_entries(subdir: Path, session_marker: str) -> list[Path]:
 
 def default_lock_path() -> Path:
     return Path(
-        os.environ.get("LOGSEQ_LOCK_PATH", "~/.claude/vault_index.lock")
+        os.environ.get("LOGSEQ_LOCK_PATH", str(MEMORY_HOME / "vault_index.lock"))
     ).expanduser()
 
 

@@ -45,7 +45,7 @@ def pages_dir() -> Path:
 
 def index_path() -> Path:
     return Path(
-        os.environ.get("LOGSEQ_INDEX_PATH", "~/.claude/vault_index.npz")
+        os.environ.get("LOGSEQ_INDEX_PATH", str(shared.DEFAULT_INDEX_PATH))
     ).expanduser()
 
 
@@ -395,8 +395,7 @@ def _persist(job: dict, insights: dict) -> Path:
         shared.update_index(pages_dir(), started_on)
         shared.write_digest(pages_dir(), date.today())
     return (
-        pages_dir()
-        / "claude"
+        shared.memory_root(pages_dir())
         / "sessions"
         / started_on.strftime("%Y_%m_%d")
         / f"{session_slug}.md"

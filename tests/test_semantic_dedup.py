@@ -1,3 +1,4 @@
+import os
 import re
 import tempfile
 import unittest
@@ -7,6 +8,11 @@ from unittest import mock
 
 import logseq_memory_mcp as mcp
 import logseq_memory_shared as shared
+
+# Keep the vault write lock out of the real ~/.logseq-memory during tests.
+os.environ.setdefault(
+    "LOGSEQ_LOCK_PATH", os.path.join(tempfile.gettempdir(), "logseq-memory-test.lock")
+)
 
 try:
     import numpy as np
@@ -67,7 +73,7 @@ class SemanticDedupTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.pages = self.root / "pages"
-        self.patterns = self.pages / "claude" / "patterns"
+        self.patterns = self.pages / "memory" / "patterns"
         self.index = self.root / "vault_index.npz"
         self.model_patch = mock.patch.object(shared, "_EMBEDDING_MODEL", FakeModel())
         self.model_patch.start()
@@ -162,7 +168,7 @@ class SemanticDedupTests(unittest.TestCase):
 
     def test_match_outside_target_directory_is_ignored(self):
         other = existing_page(
-            self.root / "other-vault" / "claude" / "patterns" / "pattern-x.md",
+            self.root / "other-vault" / "memory" / "patterns" / "pattern-x.md",
             "Pattern: Pin Helm Chart Versions",
             "Pin helm chart versions in gitops releases",
         )
