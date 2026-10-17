@@ -596,8 +596,10 @@ subsequent index updates do not require a restart.
 
 Claude's original implementation is the compatibility specification. Commit
 `b630a63` is the frozen pre-refactor baseline used by the differential test.
-Run the suite used by CI (77 tests; the 13 that need numpy are skipped
-when numpy is not installed) with:
+Run the suite used by CI (78 tests; the 13 that need numpy are skipped
+when it is not installed) with the command below. CI installs `numpy` and `mcp`
+on Ubuntu, macOS and Windows (Python 3.11 and 3.13), plus one Ubuntu job
+without them to keep the stdlib-only, fail-open path covered:
 
 ```sh
 python -m unittest discover -s tests -v
