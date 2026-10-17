@@ -11,7 +11,7 @@ immediately after deduplication; an empty extraction is valid.
 ## Workflow
 
 1. Resolve provenance before considering any write:
-   - Run `/Users/spiros/.pyenv/versions/3.13.0/bin/python3 /Users/spiros/.logseq-memory/bin/logseq_memory_codex.py resolve-session`.
+   - Run `__LOGSEQ_PYTHON__ __LOGSEQ_BIN__/logseq_memory_codex.py resolve-session`.
    - Retain the returned `session`, `project`, and ordered `models`.
    - Stop without writing if the command fails, no models are returned, or the current task cannot be identified. Never guess from global config and never substitute the Terra extraction model.
 2. Review the visible task:

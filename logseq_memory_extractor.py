@@ -18,10 +18,12 @@ from pathlib import Path
 
 import logseq_memory_shared as shared
 
+shared.use_offline_models()
+
 # ── Config ────────────────────────────────────────────────────────────────────
 LOGSEQ_PAGES_DIR = shared.DEFAULT_PAGES_DIR
 INDEX_PATH = shared.DEFAULT_INDEX_PATH
-CLAUDE_BIN = shutil.which("claude") or "/Users/spiros/.local/bin/claude"
+CLAUDE_BIN = shared.find_cli("claude")
 MAX_TRANSCRIPT_CHARS = 12_000  # ~3k tokens — keeps prompts fast via the claude CLI
 
 EXTRACTION_PROMPT = shared.extraction_prompt("Claude Code")

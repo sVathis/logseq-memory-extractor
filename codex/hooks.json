@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/spiros/.pyenv/versions/3.13.0/bin/python3 /Users/spiros/.logseq-memory/bin/logseq_memory_codex.py enqueue",
+            "command": "__LOGSEQ_PYTHON__ __LOGSEQ_BIN__/logseq_memory_codex.py enqueue",
             "timeout": 3,
             "statusMessage": "Saving reusable task memory"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/spiros/.pyenv/versions/3.13.0/bin/python3 /Users/spiros/.logseq-memory/bin/logseq_memory_retriever.py",
+            "command": "__LOGSEQ_PYTHON__ __LOGSEQ_BIN__/logseq_memory_retriever.py",
             "timeout": 10,
             "statusMessage": "Searching Logseq memory",
             "additionalContextLimit": 5000

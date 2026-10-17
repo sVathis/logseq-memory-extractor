@@ -89,19 +89,24 @@ def _rebuild(model, np, verbose: bool) -> None:
                 paths.append(str(p))
                 texts.append(text)
 
-    if not texts:
-        print("No vault files found. Check LOGSEQ_PAGES_DIR.", file=sys.stderr)
-        sys.exit(1)
-
-    if verbose:
-        print(f"Embedding {len(texts):,} files...", flush=True)
-
-    embeddings = model.encode(
-        texts,
-        show_progress_bar=verbose,
-        batch_size=256,
-        normalize_embeddings=True,  # pre-normalised: dot product == cosine similarity
-    )
+    if texts:
+        if verbose:
+            print(f"Embedding {len(texts):,} files...", flush=True)
+        embeddings = model.encode(
+            texts,
+            show_progress_bar=verbose,
+            batch_size=256,
+            normalize_embeddings=True,  # pre-normalised: dot product == cosine similarity
+        )
+    else:
+        # A fresh vault: write an empty index so incremental appends from the
+        # writers (which skip when no index exists) start working right away.
+        print(
+            f"No pages yet under {shared.memory_root(LOGSEQ_PAGES_DIR)}; "
+            "writing an empty index.",
+            file=sys.stderr,
+        )
+        embeddings = np.zeros((0, model.get_sentence_embedding_dimension()))
 
     INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(

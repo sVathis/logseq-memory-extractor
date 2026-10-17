@@ -23,6 +23,8 @@ from pathlib import Path
 
 import logseq_memory_shared as shared
 
+shared.use_offline_models()
+
 INDEX_PATH = shared.DEFAULT_INDEX_PATH
 MODEL_NAME = "all-MiniLM-L6-v2"
 TOP_K = 5

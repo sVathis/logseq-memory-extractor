@@ -7,15 +7,21 @@ hook keeps its original public wrappers while delegating to these functions.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import re
+import shutil
 import sys
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from typing import Callable, Iterable
+
+try:  # POSIX
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+    import msvcrt
 
 
 MAX_TRANSCRIPT_CHARS = 12_000
@@ -32,9 +38,37 @@ MAX_ITEMS_PER_CATEGORY = 5
 # lock, installed scripts) are not tied to any one agent; Claude and Codex both
 # read and write the same paths. Each can be overridden by environment.
 MEMORY_DIRNAME = "memory"
-MEMORY_HOME = Path(os.environ.get("LOGSEQ_MEMORY_HOME", "~/.logseq-memory")).expanduser()
+def _default_memory_home() -> Path:
+    """LOGSEQ_MEMORY_HOME, else the install this file runs from, else ~/.logseq-memory.
+
+    install.py copies the scripts into <home>/bin next to <home>/config.json,
+    so an install in a non-default --home works without any environment.
+    """
+    if os.environ.get("LOGSEQ_MEMORY_HOME"):
+        return Path(os.environ["LOGSEQ_MEMORY_HOME"]).expanduser()
+    here = Path(__file__).resolve().parent
+    if here.name == "bin" and (here.parent / "config.json").exists():
+        return here.parent
+    return Path("~/.logseq-memory").expanduser()
+
+
+MEMORY_HOME = _default_memory_home()
+CONFIG_PATH = MEMORY_HOME / "config.json"
+
+
+def _home_config() -> dict:
+    """Settings written by install.py (e.g. {"pages_dir": ...}); empty if absent."""
+    try:
+        data = json.loads(CONFIG_PATH.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 DEFAULT_PAGES_DIR = Path(
-    os.environ.get("LOGSEQ_PAGES_DIR", "~/VGS/Notes/pages")
+    os.environ.get("LOGSEQ_PAGES_DIR")
+    or _home_config().get("pages_dir")
+    or "~/VGS/Notes/pages"
 ).expanduser()
 DEFAULT_INDEX_PATH = Path(
     os.environ.get("LOGSEQ_INDEX_PATH", str(MEMORY_HOME / "vault_index.npz"))
@@ -44,6 +78,42 @@ RETRIEVER_DISABLED_FLAGS = (
     # Legacy flag still written by the Claude vault-toggle skill.
     Path("~/.claude/vault_retriever_disabled").expanduser(),
 )
+
+
+def use_offline_models() -> None:
+    """Load the cached embedding model without contacting HuggingFace.
+
+    Hooks and the MCP server call this so they need no environment prefix
+    (which would be shell-specific); an explicit setting still wins.
+    """
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+
+
+def find_cli(name: str) -> str:
+    """Resolve an agent CLI (claude / codex) from PATH, config.json, or the
+    usual install locations. GUI apps start hooks without the shell PATH."""
+    found = shutil.which(name)
+    if found:
+        return found
+    configured = _home_config().get(f"{name}_bin")
+    if configured and Path(configured).exists():
+        return configured
+    home = Path.home()
+    exe = ".exe" if os.name == "nt" else ""
+    candidates = [
+        home / ".local" / "bin" / f"{name}{exe}",
+        home / f".{name}" / "local" / f"{name}{exe}",
+        Path("/opt/homebrew/bin") / name,
+        Path("/usr/local/bin") / name,
+    ]
+    if name == "codex":
+        candidates.append(Path("/Applications/ChatGPT.app/Contents/Resources/codex"))
+        candidates.append(Path("/Applications/Codex.app/Contents/Resources/codex"))
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return name
 
 
 def memory_root(pages_dir: Path) -> Path:
@@ -893,8 +963,21 @@ def vault_lock(path: Path | None = None):
     lock = path or default_lock_path()
     lock.parent.mkdir(parents=True, exist_ok=True)
     with lock.open("a+", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        if fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        else:
+            handle.seek(0)
+            while True:  # LK_LOCK gives up after ~10 s; keep waiting like flock
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
         try:
             yield
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            else:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)

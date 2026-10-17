@@ -42,8 +42,20 @@ from pathlib import Path
 
 import logseq_memory_shared as shared
 
+shared.use_offline_models()
+
 
 def _notify(title: str, message: str) -> None:
+    """macOS banner for vault activity; a no-op elsewhere and never fatal."""
+    if sys.platform != "darwin":
+        return
+    try:
+        _osascript_notify(title, message)
+    except OSError:
+        pass
+
+
+def _osascript_notify(title: str, message: str) -> None:
     subprocess.run(
         ["osascript", "-e",
          f'display notification "{message}" with title "{title}"'],

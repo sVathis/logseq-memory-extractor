@@ -57,7 +57,7 @@ are still skipped without touching the existing page.
 
 - [Claude Code Desktop](https://claude.ai/download) — authentication is reused from the Desktop app
 - [Logseq](https://logseq.com) with an existing graph (or create a new one)
-- Python 3.10+ (the regression suite runs in CI on Python 3.11 and 3.13)
+- Python 3.10+ on macOS, Linux or Windows (CI runs the regression suite on all three with Python 3.11 and 3.13)
 - For semantic search and MCP server: `pip install sentence-transformers numpy mcp`
 
 ## Installation
@@ -71,10 +71,61 @@ the shared scripts.
 ```
 ~/.logseq-memory/
 ├── bin/                  ← all scripts + codex_extraction_schema.json
+├── venv/                 ← private Python env (installer)
+├── config.json           ← {"pages_dir": ...} written by the installer
 ├── vault_index.npz       ← shared semantic index
 ├── vault_index.lock      ← shared write lock
+├── backups/<timestamp>/  ← copies of config files the installer edited
 └── retriever_disabled    ← optional: create to pause prompt retrieval
 ```
+
+### Quick install (`install.py`)
+
+On a new computer, clone the repo and run the installer with any Python 3.10+.
+It needs only the standard library to start:
+
+```sh
+git clone https://github.com/svathis-vgs/logseq-memory-extractor.git
+cd logseq-memory-extractor
+python3 install.py --vault ~/path/to/your/graph/pages
+```
+
+On Windows run it the same way from PowerShell (`py install.py --vault ...`).
+
+It installs for whichever agents it finds: Claude Code (`~/.claude` or `claude`
+on `PATH`), the Claude Desktop app (its config folder, or the app in
+`/Applications` / `%LOCALAPPDATA%`), and Codex (`~/.codex`, `codex` on `PATH`, or
+the Codex / ChatGPT app). It warns when an agent is registered but its CLI is
+not on `PATH`: retrieval and the MCP server still work, but saving insights at
+session end runs `claude -p` / `codex exec`.
+
+1. Copies the scripts to `~/.logseq-memory/bin/` and records the vault (and the
+   `claude` / `codex` CLI paths it found) in `~/.logseq-memory/config.json`.
+   Scripts read it when the matching environment variable is unset, so hooks
+   started by GUI apps without a shell `PATH` still find everything.
+2. Creates `~/.logseq-memory/venv` with sentence-transformers, numpy and mcp,
+   and caches the embedding model (the only step that needs the network).
+3. Creates `<vault>/memory/` and builds the index (an empty one for a new vault).
+4. Claude Code: Stop and UserPromptSubmit hooks and the `logseq-vault` MCP server
+   in `~/.claude/settings.json` (and the Desktop app's config when present), plus
+   `sandbox.filesystem.allowWrite` entries when a sandbox is configured.
+5. Codex: hooks in `~/.codex/hooks.json`, the `logseq_vault` MCP server and
+   `[features] hooks = true` in `~/.codex/config.toml`, and the `$extract-memory`
+   skill.
+6. A marked block in `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` pointing the
+   agent at the vault and digest, skipped when the file already mentions the
+   digest.
+
+Re-running is safe: it replaces its own entries (including ones from older
+install locations such as `~/.claude/hooks/`), keeps everything else, and only
+rewrites files that change. Each edited file is backed up first. Useful flags:
+`--dry-run`, `--claude` / `--no-claude`, `--codex` / `--no-codex`,
+`--skip-deps`, `--skip-index`, `--home DIR`, and `--uninstall` (removes the
+agent registrations and managed blocks; leaves the vault, venv and index).
+Afterwards restart Claude Desktop / Claude Code and Codex, and trust the new
+hooks with `/hooks` in Codex.
+
+The steps below describe the same setup done by hand.
 
 ### 1. Install the shared scripts
 
@@ -120,23 +171,29 @@ Desktop apps launch hooks and MCP servers without sourcing your shell profile,
 so use the full Python path printed by
 `python3 -c "import sys; print(sys.executable)"` (shown below as `PY`).
 
-Hooks, in `~/.claude/settings.json`:
+Hooks, in `~/.claude/settings.json`. The exec form (`command` plus `args`)
+runs without a shell, so it behaves the same under bash and PowerShell and
+copes with spaces in paths. The scripts set `TRANSFORMERS_OFFLINE` themselves
+and locate their install from `bin/`, so no environment prefix is needed:
 
 ```json
 {
   "hooks": {
     "Stop": [
-      {"matcher": "", "hooks": [{"type": "command",
-        "command": "PY /Users/YOU/.logseq-memory/bin/logseq_memory_extractor.py"}]}
+      {"matcher": "", "hooks": [{"type": "command", "command": "PY",
+        "args": ["/Users/YOU/.logseq-memory/bin/logseq_memory_extractor.py"]}]}
     ],
     "UserPromptSubmit": [
-      {"matcher": "", "hooks": [{"type": "command",
-        "command": "PY /Users/YOU/.logseq-memory/bin/logseq_memory_retriever.py",
+      {"matcher": "", "hooks": [{"type": "command", "command": "PY",
+        "args": ["/Users/YOU/.logseq-memory/bin/logseq_memory_retriever.py"],
         "timeout": 10}]}
     ]
   }
 }
 ```
+
+On Windows `PY` is `%USERPROFILE%\.logseq-memory\venv\Scripts\python.exe` and the
+Desktop app's config is `%APPDATA%\Claude\claude_desktop_config.json`.
 
 The Stop hook entry has no explicit `timeout`, so Claude Code's default applies;
 the extractor itself gives `claude -p` up to 300 s. Transcripts under 200
@@ -176,9 +233,9 @@ The digest is regenerated by the Stop hook, the Codex worker and
 ### 5. Register with Codex
 
 Copy `codex/hooks.json` to `~/.codex/hooks.json` and
-`codex/skills/extract-memory/` to `~/.codex/skills/extract-memory/`. Both contain
-absolute `/Users/spiros/.pyenv/versions/3.13.0/bin/python3` and
-`/Users/spiros/.logseq-memory/bin/` paths; replace them with your own. The hooks
+`codex/skills/extract-memory/` to `~/.codex/skills/extract-memory/`. Both are
+templates: replace `__LOGSEQ_PYTHON__` with your Python path and
+`__LOGSEQ_BIN__` with `~/.logseq-memory/bin` (absolute). The hooks
 are `SessionEnd` → `logseq_memory_codex.py enqueue` (3 s timeout; it parses and
 queues the transcript synchronously, then detaches the worker) and
 `UserPromptSubmit` → `logseq_memory_retriever.py` (10 s timeout,
@@ -281,7 +338,7 @@ directory.
 ## MCP tools
 
 The shared server exposes the five existing Claude tools plus one Codex-specific
-writer and fires macOS notifications (via `osascript`) on key events:
+writer and, on macOS only, fires notifications (via `osascript`) on key events:
 
 | Tool | Description | Notification |
 |------|-------------|--------------|
@@ -539,7 +596,7 @@ subsequent index updates do not require a restart.
 
 Claude's original implementation is the compatibility specification. Commit
 `b630a63` is the frozen pre-refactor baseline used by the differential test.
-Run the suite used by CI (44 tests; the 7 semantic-dedup tests are skipped
+Run the suite used by CI (77 tests; the 13 that need numpy are skipped
 when numpy is not installed) with:
 
 ```sh

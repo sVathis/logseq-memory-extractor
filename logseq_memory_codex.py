@@ -17,13 +17,11 @@ from pathlib import Path
 
 import logseq_memory_shared as shared
 
+shared.use_offline_models()
+
 
 EXTRACTION_MODEL = os.environ.get("CODEX_LOGSEQ_EXTRACTION_MODEL", "gpt-5.6-terra")
-CODEX_BIN = (
-    os.environ.get("CODEX_BIN")
-    or shutil.which("codex")
-    or "/Applications/ChatGPT.app/Contents/Resources/codex"
-)
+CODEX_BIN = os.environ.get("CODEX_BIN") or shared.find_cli("codex")
 SCHEMA_PATH = Path(__file__).with_name("codex_extraction_schema.json")
 FAILURE_RETENTION_DAYS = 7
 
@@ -39,7 +37,7 @@ class ParsedTranscript:
 
 def pages_dir() -> Path:
     return Path(
-        os.environ.get("LOGSEQ_PAGES_DIR", "~/VGS/Notes/pages")
+        os.environ.get("LOGSEQ_PAGES_DIR", str(shared.DEFAULT_PAGES_DIR))
     ).expanduser()
 
 
@@ -307,10 +305,17 @@ def enqueue(payload: dict) -> int:
             stdout=log_handle,
             stderr=log_handle,
             env=_worker_environment(),
-            start_new_session=True,
             close_fds=True,
+            **_detached(),
         )
     return 0
+
+
+def _detached() -> dict:
+    """Popen options that let the worker outlive the SessionEnd hook."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
 
 
 def call_codex(transcript: str) -> dict:
