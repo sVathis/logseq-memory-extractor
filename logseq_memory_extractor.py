@@ -16,9 +16,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import logseq_memory_shared as shared
-
-shared.use_offline_models()
+import logseq_memory_shared as shared  # also switches HF offline when the model is cached
 
 # ── Config ────────────────────────────────────────────────────────────────────
 LOGSEQ_PAGES_DIR = shared.DEFAULT_PAGES_DIR

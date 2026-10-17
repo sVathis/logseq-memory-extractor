@@ -86,11 +86,66 @@ class InstallLocationTests(unittest.TestCase):
                 self.assertEqual(shared.find_cli("claude"), str(binary))
 
     def test_offline_defaults_do_not_override_explicit_settings(self):
-        with mock.patch.dict(os.environ, {"TRANSFORMERS_OFFLINE": "0"}, clear=False):
-            os.environ.pop("HF_DATASETS_OFFLINE", None)
+        with mock.patch.dict(os.environ, {"TRANSFORMERS_OFFLINE": "0"}, clear=False), \
+                mock.patch.object(shared, "model_is_cached", return_value=True):
+            for name in ("HF_DATASETS_OFFLINE", "HF_HUB_OFFLINE"):
+                os.environ.pop(name, None)
             shared.use_offline_models()
             self.assertEqual(os.environ["TRANSFORMERS_OFFLINE"], "0")
-            self.assertEqual(os.environ["HF_DATASETS_OFFLINE"], "1")
+            # An explicit choice for one variable leaves the others alone.
+            self.assertNotIn("HF_DATASETS_OFFLINE", os.environ)
+            self.assertNotIn("HF_HUB_OFFLINE", os.environ)
+
+    def test_cached_model_sets_all_offline_vars(self):
+        with mock.patch.dict(os.environ, {}, clear=False), \
+                mock.patch.object(shared, "model_is_cached", return_value=True):
+            for name in shared.OFFLINE_VARS:
+                os.environ.pop(name, None)
+            shared.use_offline_models()
+            for name in shared.OFFLINE_VARS:
+                self.assertEqual(os.environ[name], "1")
+
+    def test_stays_online_until_the_model_is_downloaded(self):
+        with mock.patch.dict(os.environ, {}, clear=False), \
+                mock.patch.object(shared, "model_is_cached", return_value=False):
+            for name in shared.OFFLINE_VARS:
+                os.environ.pop(name, None)
+            shared.use_offline_models()
+            for name in shared.OFFLINE_VARS:
+                self.assertNotIn(name, os.environ)
+
+
+class ModelCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.env = mock.patch.dict(os.environ, {"HF_HOME": str(self.root / "hf"),
+                                                "SENTENCE_TRANSFORMERS_HOME": str(self.root / "st")})
+        self.env.start()
+        for name in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
+            os.environ.pop(name, None)
+
+    def tearDown(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
+    def test_empty_cache_is_not_cached(self):
+        self.assertFalse(shared.model_is_cached())
+
+    def test_hub_snapshot_counts_as_cached(self):
+        snap = self.root / "hf" / "hub" / f"models--sentence-transformers--{shared.EMBEDDING_MODEL}" / "snapshots" / "abc"
+        snap.mkdir(parents=True)
+        self.assertTrue(shared.model_is_cached())
+
+    def test_empty_snapshots_dir_is_not_cached(self):
+        (self.root / "hf" / "hub" / f"models--sentence-transformers--{shared.EMBEDDING_MODEL}" / "snapshots").mkdir(parents=True)
+        self.assertFalse(shared.model_is_cached())
+
+    def test_legacy_sentence_transformers_cache_counts(self):
+        legacy = self.root / "st" / f"sentence-transformers_{shared.EMBEDDING_MODEL}"
+        legacy.mkdir(parents=True)
+        (legacy / "config.json").write_text("{}", encoding="utf-8")
+        self.assertTrue(shared.model_is_cached())
 
 
 if __name__ == "__main__":

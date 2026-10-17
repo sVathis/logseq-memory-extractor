@@ -80,14 +80,51 @@ RETRIEVER_DISABLED_FLAGS = (
 )
 
 
-def use_offline_models() -> None:
-    """Load the cached embedding model without contacting HuggingFace.
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+OFFLINE_VARS = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_DATASETS_OFFLINE")
 
-    Hooks and the MCP server call this so they need no environment prefix
-    (which would be shell-specific); an explicit setting still wins.
+
+def _model_cache_dirs(model: str = EMBEDDING_MODEL) -> list[Path]:
+    """Where sentence-transformers keeps a downloaded model (current HF hub
+    cache layout, then the legacy sentence-transformers cache)."""
+    home = Path.home()
+    hub = os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if not hub:
+        hf_home = os.environ.get("HF_HOME") or str(
+            Path(os.environ.get("XDG_CACHE_HOME") or home / ".cache") / "huggingface"
+        )
+        hub = str(Path(hf_home) / "hub")
+    legacy = os.environ.get("SENTENCE_TRANSFORMERS_HOME") or str(
+        home / ".cache" / "torch" / "sentence_transformers"
+    )
+    return [
+        Path(hub).expanduser() / f"models--sentence-transformers--{model}" / "snapshots",
+        Path(legacy).expanduser() / f"sentence-transformers_{model}",
+    ]
+
+
+def model_is_cached(model: str = EMBEDDING_MODEL) -> bool:
+    return any(d.is_dir() and any(d.iterdir()) for d in _model_cache_dirs(model))
+
+
+def use_offline_models() -> None:
+    """Load the embedding model from the local cache without contacting
+    HuggingFace, once it has been downloaded.
+
+    Runs when this module is imported, so every script (hooks, MCP server,
+    index rebuilds, ad-hoc imports) avoids network calls that a sandbox or
+    proxy would block, with no shell-specific environment prefix. Before the
+    first download nothing is set, so that download can still happen. If any
+    of the variables is already set, the caller has chosen; leave all three.
     """
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-    os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
+    if any(name in os.environ for name in OFFLINE_VARS):
+        return
+    if model_is_cached():
+        for name in OFFLINE_VARS:
+            os.environ.setdefault(name, "1")
+
+
+use_offline_models()
 
 
 def find_cli(name: str) -> str:
@@ -487,7 +524,7 @@ def update_vault_index(new_paths: list[Path], index_path: Path) -> None:
         data = np.load(index_path, allow_pickle=True)
         old_embeddings = data["embeddings"]
         old_paths = list(data["paths"])
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = SentenceTransformer(EMBEDDING_MODEL)
         new_embeddings = model.encode(
             texts, normalize_embeddings=True, show_progress_bar=False
         ).astype("float32")
@@ -515,7 +552,7 @@ def _embedding_model():
     if _EMBEDDING_MODEL is None:
         from sentence_transformers import SentenceTransformer
 
-        _EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+        _EMBEDDING_MODEL = SentenceTransformer(EMBEDDING_MODEL)
     return _EMBEDDING_MODEL
 
 

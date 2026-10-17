@@ -40,9 +40,7 @@ from zipfile import BadZipFile
 from datetime import date, datetime
 from pathlib import Path
 
-import logseq_memory_shared as shared
-
-shared.use_offline_models()
+import logseq_memory_shared as shared  # also switches HF offline when the model is cached
 
 
 def _notify(title: str, message: str) -> None:

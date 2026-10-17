@@ -173,8 +173,10 @@ so use the full Python path printed by
 
 Hooks, in `~/.claude/settings.json`. The exec form (`command` plus `args`)
 runs without a shell, so it behaves the same under bash and PowerShell and
-copes with spaces in paths. The scripts set `TRANSFORMERS_OFFLINE` themselves
-and locate their install from `bin/`, so no environment prefix is needed:
+copes with spaces in paths. No environment prefix is needed: importing
+`logseq_memory_shared` switches HuggingFace offline (`HF_HUB_OFFLINE`,
+`TRANSFORMERS_OFFLINE`, `HF_DATASETS_OFFLINE`) once the embedding model is in
+the local cache, and the scripts locate their install from `bin/`:
 
 ```json
 {
@@ -572,15 +574,18 @@ unchanged.
 **Rebuild the full index** (after vault consolidation or model change):
 
 ```sh
-TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 python3 ~/.logseq-memory/bin/logseq_memory_index.py
+python3 ~/.logseq-memory/bin/logseq_memory_index.py
 ```
 
-If you have a SOCKS proxy active (`ALL_PROXY` env var), also unset it: `env -u ALL_PROXY ...`. The model is cached locally and never needs a network call after the first build.
+Once the model is cached (after the installer or the first build), every script
+loads it offline automatically, so rebuilds work behind a proxy or sandbox that
+blocks HuggingFace. Setting any of the three variables yourself (e.g.
+`HF_HUB_OFFLINE=0` to force an online check) turns the automatic switch off.
 
 **Rebuild quietly** (no progress bar, for cron jobs):
 
 ```sh
-TRANSFORMERS_OFFLINE=1 python3 ~/.logseq-memory/bin/logseq_memory_index.py --quiet
+python3 ~/.logseq-memory/bin/logseq_memory_index.py --quiet
 ```
 
 ## Search index freshness
@@ -596,7 +601,7 @@ subsequent index updates do not require a restart.
 
 Claude's original implementation is the compatibility specification. Commit
 `b630a63` is the frozen pre-refactor baseline used by the differential test.
-Run the suite used by CI (78 tests; the 13 that need numpy are skipped
+Run the suite used by CI (84 tests; the 13 that need numpy are skipped
 when it is not installed) with the command below. CI installs `numpy` and `mcp`
 on Ubuntu, macOS and Windows (Python 3.11 and 3.13), plus one Ubuntu job
 without them to keep the stdlib-only, fail-open path covered:

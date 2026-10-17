@@ -15,9 +15,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-import logseq_memory_shared as shared
-
-shared.use_offline_models()
+import logseq_memory_shared as shared  # also switches HF offline when the model is cached
 
 
 EXTRACTION_MODEL = os.environ.get("CODEX_LOGSEQ_EXTRACTION_MODEL", "gpt-5.6-terra")
