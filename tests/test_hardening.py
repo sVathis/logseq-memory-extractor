@@ -43,6 +43,43 @@ class ReadPageScopeTests(unittest.TestCase):
         self.assertTrue(mcp._read_page(str(escape)).startswith("Refused"))
 
 
+class StalenessLabelTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.page = Path(self.tmp.name) / "page.md"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def label(self, *props):
+        self.page.write_text("title:: T\n" + "".join(p + "\n" for p in props))
+        return mcp._staleness_label(self.page)
+
+    @staticmethod
+    def day(days_ago):
+        from datetime import datetime, timedelta
+        return (datetime.now() - timedelta(days=days_ago)).strftime("[[%Y/%m/%d]]")
+
+    def test_last_updated_wins_even_after_date(self):
+        # Writers emit date:: on the line before last-updated::.
+        self.assertEqual(
+            self.label(f"date:: {self.day(100)}", f"last-updated:: {self.day(0)}"),
+            "fresh",
+        )
+
+    def test_falls_back_to_date(self):
+        self.assertEqual(self.label(f"date:: {self.day(20)}"), "stale")
+
+    def test_unparseable_last_updated_falls_back_to_date(self):
+        self.assertEqual(
+            self.label(f"date:: {self.day(10)}", "last-updated:: [[not a date]]"),
+            "aging",
+        )
+
+    def test_no_dates_is_unknown(self):
+        self.assertEqual(self.label("type:: [[pattern]]"), "unknown")
+
+
 class ManualBurstGuardTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

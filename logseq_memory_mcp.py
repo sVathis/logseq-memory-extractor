@@ -132,39 +132,31 @@ def _ensure_loaded() -> bool:
 # ---------------------------------------------------------------------------
 
 def _staleness_label(path: Path) -> str:
-    text = path.read_text(errors="replace")
-    for line in text.splitlines()[:8]:
-        if line.startswith("last-updated::"):
-            date_str = line.split("::", 1)[1].strip().strip("[]")
-            try:
-                updated = datetime.strptime(date_str, "%Y/%m/%d")
-                age = (datetime.now() - updated).days
-                if age <= STALENESS_DAYS["fresh"]:
-                    return "fresh"
-                elif age <= STALENESS_DAYS["aging"]:
-                    return "aging"
-                elif age <= STALENESS_DAYS["stale"]:
-                    return "stale"
-                else:
-                    return f"abandoned ({age}d)"
-            except ValueError:
-                pass
-        if line.startswith("date::"):
-            date_str = line.split("::", 1)[1].strip().strip("[]")
-            try:
-                created = datetime.strptime(date_str, "%Y/%m/%d")
-                age = (datetime.now() - created).days
-                if age <= STALENESS_DAYS["fresh"]:
-                    return "fresh"
-                elif age <= STALENESS_DAYS["aging"]:
-                    return "aging"
-                elif age <= STALENESS_DAYS["stale"]:
-                    return "stale"
-                else:
-                    return f"abandoned ({age}d)"
-            except ValueError:
-                pass
-    return "unknown"
+    """Age label from last-updated::, falling back to date::.
+
+    Pages write date:: on the line before last-updated::, so the properties
+    are looked up by name rather than taking whichever date comes first.
+    """
+    properties: dict[str, datetime] = {}
+    for line in path.read_text(errors="replace").splitlines()[:8]:
+        for key in ("last-updated", "date"):
+            if line.startswith(f"{key}::"):
+                date_str = line.split("::", 1)[1].strip().strip("[]")
+                try:
+                    properties[key] = datetime.strptime(date_str, "%Y/%m/%d")
+                except ValueError:
+                    pass
+    updated = properties.get("last-updated") or properties.get("date")
+    if updated is None:
+        return "unknown"
+    age = (datetime.now() - updated).days
+    if age <= STALENESS_DAYS["fresh"]:
+        return "fresh"
+    elif age <= STALENESS_DAYS["aging"]:
+        return "aging"
+    elif age <= STALENESS_DAYS["stale"]:
+        return "stale"
+    return f"abandoned ({age}d)"
 
 
 def _search(query: str, top_k: int, category: str | None) -> list[dict]:
